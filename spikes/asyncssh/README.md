@@ -1,0 +1,42 @@
+# AsyncSSH Spike
+
+Throwaway spike to validate [ADR-0001](../../docs/adr/0001-language-and-ssh-library.md)
+before marking it Accepted. Not production code.
+
+- **Library:** asyncssh 2.24.1
+- **Python:** 3.12+
+- **Platform tested:** Windows (PowerShell), OpenSSH client
+- **Listen address:** 127.0.0.1:2222 (local only)
+
+## How to run
+
+```bash
+python spikes/asyncssh/spike_server.py
+# in a second terminal:
+ssh -p 2222 ghost@localhost
+```
+
+## Results
+
+| # | Check | Result | Date |
+|---|---|---|---|
+| 1 | OpenSSH client connects | Pass | 2026-11-05 |
+| 2 | Auth attempts logged, accepted/rejected by app | Pending | |
+| 3 | Custom banner advertised | Pending | |
+| 4 | Agent, port (-L/-R/-D), X11 forwarding and SFTP rejected |  Pending | |
+| 5 | Host key stable across restarts | Pending | |
+| 6 | Hypothesis test runs alongside asyncio | Pending | |
+
+## Check details
+
+### 1. OpenSSH client connects 
+- **Test:** `ssh -p 2222 ghost@localhost` with the correct password, then with a wrong password.
+- **Result:** The correct password received `hello` and the connection closed. Wrong passwords
+  were rejected with `Permission denied`.
+
+## Findings
+
+- asyncssh offers both **keyboard-interactive** and **password** auth, and routes both into
+  `validate_password`. The OpenSSH client tried 3 times with each, so one connection got
+  6 password attempts. The real build must count failures per connection across both methods
+  (R8.7) and record the method used (R1.5).
