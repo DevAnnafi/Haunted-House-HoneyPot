@@ -21,10 +21,10 @@ ssh -p 2222 ghost@localhost
 | # | Check | Result | Date |
 |---|---|---|---|
 | 1 | OpenSSH client connects | Pass | 2026-11-05 |
-| 2 | Auth attempts logged, accepted/rejected by app | Pending | |
+| 2 | Auth attempts logged, accepted/rejected by app | Pass | |
 | 3 | Custom banner advertised | Pending | |
 | 4 | Agent, port (-L/-R/-D), X11 forwarding and SFTP rejected |  Pending | |
-| 5 | Host key stable across restarts | Pending | |
+| 5 | Host key stable across restarts | Pass | |
 | 6 | Hypothesis test runs alongside asyncio | Pending | |
 
 ## Check details
