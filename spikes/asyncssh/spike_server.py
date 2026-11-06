@@ -16,7 +16,10 @@ class HoneyPotServer(asyncssh.SSHServer):
         return True
 
     def validate_password(self, username, password) -> bool:
-        return username == TEST_USERNAME and password == TEST_PASSWORD
+        success = (username == TEST_USERNAME and password == TEST_PASSWORD)
+        result = "SUCCESS" if success else "FAILED"
+        print(f"AUTH {result} ip={self.client_ip} username={username!r}")
+        return success
 
 async def handle_session(process: asyncssh.SSHServerProcess) -> None:
     process.stdout.write("hello\n")
