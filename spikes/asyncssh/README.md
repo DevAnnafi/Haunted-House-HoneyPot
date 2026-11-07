@@ -33,6 +33,21 @@ ssh -p 2222 ghost@localhost
 - **Test:** `ssh -p 2222 ghost@localhost` with the correct password, then with a wrong password.
 - **Result:** The correct password received `hello` and the connection closed. Wrong passwords
   were rejected with `Permission denied`.
+  
+### 2. Auth attempts logged ✅
+- **Test:** One connection with the correct password, one with wrong passwords.
+- **Result:** Each attempt logged as `AUTH SUCCESS|FAILED ip=<ip> username=<repr>`.
+  Passwords are never logged. 6 `FAILED` lines for 6 wrong guesses.
+
+### 5. Host key stable across restarts ✅
+- **Test:** Restarted the server and reconnected with the same client.
+- **Result:** No "host identification has changed" warning; the key loaded from file persisted.
+
+### Extra: interactive shell and exec requests ✅
+- **Test:** Interactive session (echo loop, `exit`, Ctrl+D, terminal resize) and
+  `ssh -p 2222 ghost@localhost "uname -a"`.
+- **Result:** All four behaved correctly. Exec requests are distinguished by
+  `process.command` being a string rather than `None`.
 
 ## Findings
 
