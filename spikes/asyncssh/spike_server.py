@@ -49,6 +49,7 @@ async def handle_session(process: asyncssh.SSHServerProcess) -> None:
                     cleaned_line = line.strip()
 
                     if cleaned_line == "exit":
+                        process.stdout.write("logout\n")
                         break
 
                     process.stdout.write(f"{cleaned_line}\n")
@@ -79,7 +80,8 @@ async def start_server() -> None:
         allow_scp=False,
         login_timeout=15,
         rdns_lookup=False,
-        max_line_length=4096
+        max_line_length=4096,
+        server_version="OpenSSH_9.6p1 Ubuntu-3ubuntu13.5"
     )
 
     print("SSH honeypot listening on 127.0.0.1:2222")
