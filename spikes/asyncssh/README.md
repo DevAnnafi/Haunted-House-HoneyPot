@@ -40,3 +40,4 @@ ssh -p 2222 ghost@localhost
   `validate_password`. The OpenSSH client tried 3 times with each, so one connection got
   6 password attempts. The real build must count failures per connection across both methods
   (R8.7) and record the method used (R1.5).
+- Resizing the client terminal (Windows OpenSSH) raises asyncssh.TerminalSizeChanged while reading stdin. The handler must catch it inside the read loop and continue; catching it outside the loop ends the session on every resize. The real shell needs the same pattern.

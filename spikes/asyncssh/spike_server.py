@@ -22,8 +22,31 @@ class HoneyPotServer(asyncssh.SSHServer):
         return success
 
 async def handle_session(process: asyncssh.SSHServerProcess) -> None:
-    process.stdout.write("hello\n")
-    process.exit(0)
+    if process.command is not None:
+        process.stdout.write(f"you ran: {process.command}\n")
+        process.exit(0)
+    else:
+        process.stdout.write("ghost@haunted:~$ ")
+        while True:
+            try:
+                async for line in process.stdin:
+                    cleaned_line = line.strip()
+
+                    if cleaned_line == "exit":
+                        break
+
+                    process.stdout.write(f"{cleaned_line}\n")
+                    process.stdout.write("ghost@haunted:~$ ")
+                break
+
+            except asyncssh.TerminalSizeChanged:
+                continue
+                    
+            except (asyncssh.BreakReceived):
+                break
+        
+        process.exit(0) 
+
 
 async def start_server() -> None:
     host_key = Path(__file__).parent / "host_key"
