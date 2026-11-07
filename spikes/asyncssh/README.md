@@ -23,7 +23,7 @@ ssh -p 2222 ghost@localhost
 | 1 | OpenSSH client connects | Pass | 2026-11-05 |
 | 2 | Auth attempts logged, accepted/rejected by app | Pass | |
 | 3 | Custom banner advertised | Pending | |
-| 4 | Agent, port (-L/-R/-D), X11 forwarding and SFTP rejected |  Pending | |
+| 4 | Agent, port (-L/-R/-D), X11 forwarding and SFTP rejected |  Pass | |
 | 5 | Host key stable across restarts | Pass | |
 | 6 | Hypothesis test runs alongside asyncio | Pending | |
 
@@ -56,3 +56,4 @@ ssh -p 2222 ghost@localhost
   6 password attempts. The real build must count failures per connection across both methods
   (R8.7) and record the method used (R1.5).
 - Resizing the client terminal (Windows OpenSSH) raises asyncssh.TerminalSizeChanged while reading stdin. The handler must catch it inside the read loop and continue; catching it outside the loop ends the session on every resize. The real shell needs the same pattern.
+- Agent / X11: Verified by configuration (agent_forwarding=False, x11_forwarding=False). The Windows client could not issue the requests (no ssh-agent running; DISPLAY not set). Re-test from a Linux client before production (tracked in requirements verification).

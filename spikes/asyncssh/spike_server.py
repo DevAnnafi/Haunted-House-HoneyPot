@@ -21,6 +21,22 @@ class HoneyPotServer(asyncssh.SSHServer):
         print(f"AUTH {result} ip={self.client_ip} username={username!r}")
         return success
 
+    def connection_requested(self, dest_host: str, dest_port: int, orig_host: str, orig_port: int) -> bool:
+        print(f"FORWARD DENIED type=local ip={self.client_ip} dest={dest_host!r}:{dest_port}")
+        return False
+
+    def server_requested(self, listen_host: str, listen_port: int) -> bool:
+        print(f"FORWARD DENIED type=remote ip={self.client_ip} listen={listen_host!r}:{listen_port}")
+        return False
+
+    def unix_connection_requested(self, dest_path: str) -> bool:
+        print(f"FORWARD DENIED type=unix-local ip={self.client_ip} dest={dest_path!r}")
+        return False
+
+    def unix_server_requested(self, listen_path: str) -> bool:
+        print(f"FORWARD DENIED type=unix-remote ip={self.client_ip} listen={listen_path!r}")
+        return False
+
 async def handle_session(process: asyncssh.SSHServerProcess) -> None:
     if process.command is not None:
         process.stdout.write(f"you ran: {process.command}\n")
@@ -57,6 +73,13 @@ async def start_server() -> None:
         2222,
         server_host_keys=[str(host_key)],
         process_factory=handle_session,
+        agent_forwarding=False,
+        x11_forwarding=False,
+        sftp_factory=None,
+        allow_scp=False,
+        login_timeout=15,
+        rdns_lookup=False,
+        max_line_length=4096
     )
 
     print("SSH honeypot listening on 127.0.0.1:2222")
