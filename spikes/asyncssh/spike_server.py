@@ -4,6 +4,10 @@ from pathlib import Path
 TEST_USERNAME = "ghost"
 TEST_PASSWORD = "boo123"
 
+def format_auth_log(ip, username, success: bool):
+     result = "SUCCESS" if success else "FAILED"
+     return f"AUTH {result} ip={ip} username={username!r}"
+
 class HoneyPotServer(asyncssh.SSHServer):
     def connection_made(self, conn: asyncssh.SSHServerConnection) -> None:
         self.client_ip = conn.get_extra_info('peername')[0]
@@ -18,7 +22,7 @@ class HoneyPotServer(asyncssh.SSHServer):
     def validate_password(self, username, password) -> bool:
         success = (username == TEST_USERNAME and password == TEST_PASSWORD)
         result = "SUCCESS" if success else "FAILED"
-        print(f"AUTH {result} ip={self.client_ip} username={username!r}")
+        print(format_auth_log(self.client_ip, username, success))
         return success
 
     def connection_requested(self, dest_host: str, dest_port: int, orig_host: str, orig_port: int) -> bool:
