@@ -25,7 +25,7 @@ ssh -p 2222 ghost@localhost
 | 3 | Custom banner advertised | Pass| 2026-11-06|
 | 4 | Agent, port (-L/-R/-D), X11 forwarding and SFTP rejected |  Pass |2026-11-06 |
 | 5 | Host key stable across restarts | Pass |2026-11-05 |
-| 6 | Hypothesis test runs alongside asyncio | Pending | |
+| 6 | Hypothesis test runs alongside asyncio | Pass | |
 
 ## Check details
 
@@ -34,17 +34,17 @@ ssh -p 2222 ghost@localhost
 - **Result:** The correct password received `hello` and the connection closed. Wrong passwords
   were rejected with `Permission denied`.
   
-### 2. Auth attempts logged ✅
+### 2. Auth attempts logged 
 - **Test:** One connection with the correct password, one with wrong passwords.
 - **Result:** Each attempt logged as `AUTH SUCCESS|FAILED ip=<ip> username=<repr>`.
   Passwords are never logged. 6 `FAILED` lines for 6 wrong guesses.
 
-### 3. Custom banner advertised ✅
+### 3. Custom banner advertised 
 - **Test:** `ssh -v -p 2222 ghost@localhost` before and after setting `server_version`.
 - **Before:** `remote software version AsyncSSH_2.24.1`
 - **After:** `remote software version OpenSSH_9.6p1 Ubuntu-3ubuntu13.5`
 
-### 4. Forwarding and SFTP rejected ✅
+### 4. Forwarding and SFTP rejected 
 | Feature | Client saw | Server logged |
 |---|---|---|
 | `-L` | `open failed: connect failed` | `FORWARD DENIED type=local dest='example.com':80` |
@@ -53,11 +53,22 @@ ssh -p 2222 ghost@localhost
 | SFTP | `subsystem request failed on channel 0` | (refused by `sftp_factory=None`) |
 | Agent / X11 | Not sent by the Windows client | Verified by configuration (see Findings) |
 
-### 5. Host key stable across restarts ✅
+### 5. Host key stable across restarts 
 - **Test:** Restarted the server and reconnected with the same client.
 - **Result:** No "host identification has changed" warning; the key loaded from file persisted.
 
-### Extra: interactive shell and exec requests ✅
+### 6. Hypothesis test runs alongside asyncio 
+- **Tests:** `pytest spikes/asyncssh/test_spike.py -v` → 2 passed.
+  - `test_auth_log_is_single_safe_line` (Hypothesis): for any generated username and
+    success flag, the auth log line contains no `\n`, `\r`, or raw `\x1b`, and starts
+    with `AUTH <SUCCESS|FAILED> `.
+  - `test_exec_request_end_to_end` (pytest-asyncio): starts the server on port 0,
+    connects with the asyncssh client, runs `uname -a` via exec, and asserts output
+    and exit status 0.
+- **Finding:** The first test run caught a bug: the extracted formatter still referenced
+  `self.client_ip`. Hypothesis shrank the failure to `username=''`.
+
+### Extra: interactive shell and exec requests 
 - **Test:** Interactive session (echo loop, `exit`, Ctrl+D, terminal resize) and
   `ssh -p 2222 ghost@localhost "uname -a"`.
 - **Result:** All four behaved correctly. Exec requests are distinguished by

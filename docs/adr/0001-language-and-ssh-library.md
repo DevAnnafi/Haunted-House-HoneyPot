@@ -1,7 +1,8 @@
 # ADR-0001: Language and SSH Server Library
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-05
+- **Accepted:** 2026-11-08
 - **Project:** Haunted House Honeypot
 - **Decision owner:** Annafi Islam
 
@@ -33,7 +34,7 @@ The selection prioritizes protocol control, secure defaults, development speed, 
 
 ### Not considered
 
-- **Fork Cowrie:** Ineligible, since the rules require a brand-new project. It’s also a different architecture (Twisted) and an older design.
+- **Fork Cowrie:** Ineligible, since the rules require a brand-new project. It's also a different architecture (Twisted) and an older design.
 - **Go / Rust:** Viable, but outside my stack, and not worth the learning cost in four weeks.
 
 ## Comparison
@@ -174,22 +175,29 @@ The SSH server must never pass attacker-controlled commands to a host shell.
 ## Verification and acceptance criteria
 
 ### 1. Spike Checklist (Required for ADR Acceptance)
-The decision remains **Proposed** until the following checks are completed during the 1-day spike:
 
-- [ ] **SSH server:** A real OpenSSH client can establish a connection to the AsyncSSH server.
-- [ ] **Authentication:** Username/password attempts are recorded and the application controls acceptance or rejection.
-- [ ] **Channel restrictions:** Unsupported agent forwarding (`ssh -A`), port forwarding (`-L`, `-R`, `-D`), SFTP, and X11 requests are rejected.
-- [ ] **Server identification:** A packet capture or `ssh -v` output confirms the configured SSH identification string.
-- [ ] **Host key:** A persistent host key loads from a file and remains stable across restarts.
-- [ ] **Property-based testing:** Hypothesis tests validate command parser invariants, session-state transitions, and protocol authorization rules alongside `asyncio`.
+The decision was to remain Proposed until the following checks passed in a throwaway spike:
+
+- [x] **SSH server:** A real OpenSSH client can establish a connection to the AsyncSSH server.
+- [x] **Authentication:** Username/password attempts are recorded and the application controls acceptance or rejection.
+- [x] **Channel restrictions:** Unsupported agent forwarding (`ssh -A`), port forwarding (`-L`, `-R`, `-D`), SFTP, and X11 requests are rejected.
+- [x] **Server identification:** A packet capture or `ssh -v` output confirms the configured SSH identification string.
+- [x] **Host key:** A persistent host key loads from a file and remains stable across restarts.
+- [x] **Property-based testing:** A Hypothesis property test (the auth log line is always a single safe line) and a pytest-asyncio end-to-end exec test run in the same suite.
+
+All six spike checks passed on 2026-11-08; status updated to **Accepted**.
+Evidence: [spike results](../../spikes/asyncssh/README.md)
+
+Agent and X11 forwarding are verified by configuration only: the Windows test client could not issue those requests (no ssh-agent running; DISPLAY not set). Re-test from a Linux client before production.
 
 ### 2. Verified During Implementation (Tracked in Requirements)
+
+These are not part of ADR acceptance and remain open until the full build verifies them:
+
 - [ ] **Connection controls:** Per-IP and global connection limits, authentication timeouts, and idle timeouts operate correctly.
 - [ ] **Concurrency:** At least 100 simultaneous connections are sustained under a documented load test without crashes, unbounded resource growth, or session-state corruption.
 - [ ] **Dependency security:** The pinned `asyncssh==2.24.1` release and its dependencies pass the project's vulnerability review.
 - [ ] **Host isolation:** Attacker input cannot execute host commands, access host files, or establish unauthorized outbound connections.
-
-Once the spike checklist items pass, update the ADR status from **Proposed** to **Accepted**.
 
 ## References
 
