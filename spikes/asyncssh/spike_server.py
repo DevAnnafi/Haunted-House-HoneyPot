@@ -68,14 +68,13 @@ async def handle_session(process: asyncssh.SSHServerProcess) -> None:
         
         process.exit(0) 
 
-
-async def start_server() -> None:
+async def create_honeypot_server(port: int) -> asyncssh.SSHAcceptor:
     host_key = Path(__file__).parent / "host_key"
 
-    await asyncssh.create_server(
+    return await asyncssh.create_server(
         HoneyPotServer,
         "127.0.0.1",
-        2222,
+        port,
         server_host_keys=[str(host_key)],
         process_factory=handle_session,
         agent_forwarding=False,
@@ -87,6 +86,10 @@ async def start_server() -> None:
         max_line_length=4096,
         server_version="OpenSSH_9.6p1 Ubuntu-3ubuntu13.5"
     )
+
+
+async def start_server() -> None:
+    await create_honeypot_server(2222)
 
     print("SSH honeypot listening on 127.0.0.1:2222")
 

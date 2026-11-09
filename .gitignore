@@ -1,2 +1,5 @@
 spikes/asyncssh/host_key
 spikes/asyncssh/host_key.pub
+__pycache__/
+.pytest_cache/
+.hypothesis/
