@@ -58,3 +58,51 @@ Project initialized and initial architecture diagram created. Implementation not
 
 ### Status
 Product requirements and engineering acceptance criteria finalized. Initial architecture diagram completed. Detailed system design and implementation are next. No functional implementation or tests completed yet.
+
+# Devlog — November 5–8, 2026
+
+### Completed
+- Wrote ADR-0001 (language and SSH library): compared Python + AsyncSSH, Python + Paramiko,
+  and TypeScript + ssh2. Chose Python 3.12+ with `asyncssh==2.24.1`.
+- Audited AsyncSSH's server defaults from its source code and recorded an explicit
+  security configuration for every relevant option.
+- Built a throwaway spike (`spikes/asyncssh/`) that validated all six ADR acceptance checks:
+  connection, auth logging, forwarding/SFTP rejection, custom banner, persistent host key,
+  and Hypothesis + asyncio tests.
+- Wrote the first property-based test (Hypothesis) and the first end-to-end async test
+  (pytest-asyncio + asyncssh client).
+- Marked ADR-0001 **Accepted** (2026-11-08).
+
+### Design decisions
+- AsyncSSH handles transport, auth, and session lifecycle; a separate application layer
+  will handle command emulation, filesystem, haunting, recording, and LLM fallback.
+- Every security-relevant AsyncSSH option is set explicitly, even when the default is safe.
+- Full-project checks (connection limits, 100-connection load test, dependency review,
+  host isolation) are tracked in requirements verification, not in the ADR.
+
+### Lessons and surprises
+- **AsyncSSH allows agent forwarding by default.** Only reading the source revealed it;
+  the honeypot must set `agent_forwarding=False` explicitly.
+- **One connection got 6 password guesses.** AsyncSSH offers both keyboard-interactive and
+  password auth, and the client tried 3 of each. The failure limit (R8.7) must be my own
+  per-connection counter across both methods.
+- **A terminal resize would have killed every session.** Resizing raises
+  `TerminalSizeChanged`; catching it outside the read loop ended the session. It must be
+  caught inside the loop and the read restarted.
+- **The banner isn't the only fingerprint.** Even with an OpenSSH version string, the
+  advertised algorithm list, an unrecognized extension, and the offered auth methods still
+  reveal AsyncSSH to a tool like ssh-audit.
+- **Hypothesis caught a bug on its first run.** The extracted log formatter still referenced
+  `self`; Hypothesis reported the minimal failing input (`username=''`).
+- **Weak assertions can pass for the wrong reason.** Checking `"SUCCESS" in line` could be
+  satisfied by attacker-controlled text; assertions on my own fields must check exact positions.
+
+### Next steps
+1. Write `conventions.md` (human/Kiro split) and `tech.md`.
+2. Write ADR-0002 (HMAC password fingerprints).
+3. Write `design.md`: components, data model, and threat model.
+4. Set up CI (GitHub Actions running pytest) and the first Kiro hook.
+5. Generate `tasks.md` from the design.
+
+### Status
+SSH library choice validated and accepted. Engineering design next.
