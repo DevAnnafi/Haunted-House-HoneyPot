@@ -106,3 +106,21 @@ Product requirements and engineering acceptance criteria finalized. Initial arch
 
 ### Status
 SSH library choice validated and accepted. Engineering design next.
+
+# Devlog — November 10–11, 2026
+
+### Completed
+- Added `conventions.md` steering: human/Kiro ownership split, security rules, test and git conventions.
+- ADR-0002: HMAC-SHA-256 fingerprints for submitted passwords (no plaintext storage).
+- ADR-0003: two-service model (honeypot and dashboard API isolated, communicating only via the database).
+- ADR-0004: PostgreSQL event store with least-privilege roles and LISTEN/NOTIFY live updates.
+
+### Lessons and surprises
+- A PC reset wiped the local setup; downloading the repo as a ZIP and running `git init` created an
+  unrelated history. Re-cloning preserved the real history without a force push.
+- A typo in the git email (missing `.com`) unlinked three commits from my GitHub account.
+
+### Next steps
+1. Decide the dashboard stack and the SSH auth policy.
+2. Write `tech.md`.
+3. Write `design.md`, starting with components and the data model.
