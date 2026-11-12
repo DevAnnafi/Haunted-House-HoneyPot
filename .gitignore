@@ -3,3 +3,4 @@ spikes/asyncssh/host_key.pub
 __pycache__/
 .pytest_cache/
 .hypothesis/
+.venv/

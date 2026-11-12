@@ -1,0 +1,16 @@
+# Honeypot
+asyncssh==2.24.1
+
+# Database (honeypot + dashboard API)
+psycopg[binary]
+psycopg_pool
+
+# Dashboard API
+fastapi
+uvicorn
+
+# Testing and quality
+pytest
+pytest-asyncio
+hypothesis
+ruff

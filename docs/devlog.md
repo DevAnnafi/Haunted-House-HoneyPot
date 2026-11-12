@@ -110,17 +110,48 @@ SSH library choice validated and accepted. Engineering design next.
 # Devlog — November 10–11, 2026
 
 ### Completed
-- Added `conventions.md` steering: human/Kiro ownership split, security rules, test and git conventions.
+
+- Added `conventions.md` steering: human/Kiro ownership split, security rules, Python style (ruff), testing and git conventions.
+- Added `tech.md` steering: full stack, repository layout, platform notes, common commands.
+- Added `requirements.txt` and a project virtual environment (`.venv/`, gitignored).
 - ADR-0002: HMAC-SHA-256 fingerprints for submitted passwords (no plaintext storage).
-- ADR-0003: two-service model (honeypot and dashboard API isolated, communicating only via the database).
-- ADR-0004: PostgreSQL event store with least-privilege roles and LISTEN/NOTIFY live updates.
+- ADR-0003: two-service model (honeypot and dashboard API isolated, communicating only through the database).
+- ADR-0004: PostgreSQL event store with least-privilege roles and `LISTEN`/`NOTIFY` live updates.
+- ADR-0005: dashboard stack (FastAPI, Next.js static export, Server-Sent Events).
+- ADR-0006: SSH auth policy (weak-credential pair list, plus a private judge/demo login).
+- Chose `psycopg` 3 (async) as the PostgreSQL driver.
+- Rebuilt the development environment after a PC reset; spike tests pass again (2/2).
+
+### Design decisions
+
+- SSE event IDs are the session event sequence numbers, so the browser's built-in `Last-Event-ID` reconnection recovers missed events (R6.13).
+- `EventSource` cannot send custom headers, so dashboard auth uses an `HttpOnly`, `Secure`, `SameSite=Strict` session cookie, plus CSRF tokens on state-changing requests.
+- `NOTIFY` payloads carry only event IDs, because notifications are capped at 8,000 bytes and are not stored.
+- The honeypot's database role can insert events but never read, update, or delete history; the one exception is the LLM usage counter (R4.7).
+- The auth failure counter (R8.7) spans both keyboard-interactive and password auth on a connection.
 
 ### Lessons and surprises
-- A PC reset wiped the local setup; downloading the repo as a ZIP and running `git init` created an
-  unrelated history. Re-cloning preserved the real history without a force push.
-- A typo in the git email (missing `.com`) unlinked three commits from my GitHub account.
+
+- **A ZIP download is not a repository.** After the reset, downloading the repo as a ZIP and running `git init` created an unrelated history that could not be pushed without force-pushing over the real one. Re-cloning preserved the full history.
+- **A one-character typo unlinked my commits.** The git email was missing `.com`, so GitHub showed a grey avatar and the commits did not count on my contribution graph. The quickest check is whether the commit shows my real avatar.
+- **Tests must not depend on files outside the repository.** The end-to-end test failed after the reset because the gitignored host key no longer existed. CI will hit the same problem. In the real test suite, each test should generate a temporary host key in memory instead of reading one from disk.
+- **The venv runs Python 3.15, not 3.12.** `py -3.12` was not available, so the default Python was used. Compatible with `tech.md` (3.12+), but the Dockerfile must use the same version I test with.
+- **Windows blocks the venv activation script by default.** Fixed once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+- **`psycopg` 3's async mode does not work with Windows' default event loop.** Windows entry points must switch to the selector event loop before starting asyncio. Linux production is unaffected.
+
+### Carry into `design.md`
+
+- **Testing section:** tests generate temporary host keys and never read gitignored files; tests that start servers bind to port 0 and clean up in `finally`.
+- **Deployment section:** pin the container's Python version to the version used in development.
+- **Open questions:** IPv6 listening; matching OpenSSH 9.6's advertised algorithms and auth methods; the forwarding refusal message ("administratively prohibited").
 
 ### Next steps
-1. Decide the dashboard stack and the SSH auth policy.
-2. Write `tech.md`.
-3. Write `design.md`, starting with components and the data model.
+
+1. Choose the LLM provider and fill in the last `[YOUR CALL]` in `tech.md`.
+2. Pin all versions in `requirements.txt` with `pip freeze` once the stack works.
+3. Write `design.md`, starting with section 3 (Components): SSH Listener and Session Manager first.
+4. Set up CI (GitHub Actions running pytest) and the first Kiro hook.
+
+### Status
+
+All blocking architecture decisions are made and recorded (ADR-0001 through ADR-0006). Engineering design next.
