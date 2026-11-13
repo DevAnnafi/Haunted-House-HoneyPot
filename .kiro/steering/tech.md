@@ -69,6 +69,7 @@ The dashboard frontend is a Next.js static export served by the API (ADR-0005).
 
 ```python
 import asyncio, sys
+
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 ```
