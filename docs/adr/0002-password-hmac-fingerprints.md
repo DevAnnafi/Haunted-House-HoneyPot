@@ -72,6 +72,12 @@ server secret. Never store or log the plaintext password.**
 | Plaintext leaks through logs or errors | Never pass the password to logging; property tests assert log lines contain no password |
 | Inconsistent encoding breaks correlation | Always encode as UTF-8 before hashing |
 
+## Scope
+
+This decision covers **passwords submitted by attackers** to the SSH honeypot only.
+
+Dashboard user accounts (admin and judge) are real credentials and use a slow, salted password hash (Argon2 or bcrypt), so they cannot be recovered even by someone holding the server secret. Correlation is never needed for those accounts. See `design.md`, section 4 (`dashboard_users`).
+
 ## Verification
 
 - [ ] Identical passwords under the same secret produce identical fingerprints.

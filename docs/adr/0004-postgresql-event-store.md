@@ -31,12 +31,13 @@ durable store that:
 | Role | Used by | Permissions |
 |---|---|---|
 | `schema_owner` | Migrations only, never at runtime | Owns all tables |
-| `honeypot_writer` | SSH honeypot | `INSERT` on event tables; `SELECT`/`UPDATE` on the LLM usage counter only |
+| `honeypot_writer` | SSH honeypot | `INSERT` on event tables; `UPDATE` on three `sessions` columns only (`ended_at`, `final_haunt_level`, `end_reason`); `SELECT`/`UPDATE` on the LLM usage counter |
 | `dashboard_admin` | Dashboard API, admin requests | `SELECT` on all event tables; `DELETE` on session recordings (R5.9) |
 | `dashboard_judge` | Dashboard API, judge requests | `SELECT` only (R6.16) |
 
 Table names are provisional and are finalized in `design.md` (Data model). The intended shape:
 - **Event tables** (sessions, events, auth attempts, detections): the honeypot can only **add** rows. It can never read, change, or delete history.
+- **Closing a session:** when a connection ends, the honeypot records how and when it ended. This needs a narrow, **column-level** `UPDATE` on `sessions` (`ended_at`, `final_haunt_level`, `end_reason`). The honeypot still cannot change any event, detection, or auth record, so recorded history stays tamper-proof. Amended 2026-11-12 during `design.md`.
 - **LLM usage counter:** the one table the honeypot reads and updates, so the daily limit survives restarts (R4.7).
 - **Persistent environments (R7, stretch):** if built, the honeypot gets `SELECT`/`UPDATE` on that table only.
 
@@ -88,3 +89,4 @@ environment variables, never committed.
 - [ ] The PostgreSQL port is not reachable from outside the internal network.
 - [ ] A `NOTIFY` carries only IDs, and the dashboard receives a new event within 2 seconds (R6.3).
 - [ ] After a dashboard disconnect, missed events are recovered by sequence number (R6.13).
+- [ ] `honeypot_writer` can update only `ended_at`, `final_haunt_level`, and `end_reason` on `sessions`, and no other column.
