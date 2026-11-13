@@ -1,16 +1,23 @@
-# Honeypot
+# ── Honeypot ─────────────────────────────────────────────────────────────────
 asyncssh==2.24.1
+cryptography==50.0.2
 
-# Database (honeypot + dashboard API)
-psycopg[binary]
-psycopg_pool
+# ── Database (honeypot + dashboard API) ──────────────────────────────────────
+psycopg[binary]==3.3.8
+psycopg_pool==3.3.3
 
-# Dashboard API
-fastapi
-uvicorn
+# ── Dashboard API ─────────────────────────────────────────────────────────────
+fastapi==0.162.5
+uvicorn==0.54.0
+pydantic==2.14.3
 
-# Testing and quality
-pytest
-pytest-asyncio
-hypothesis
-ruff
+# ── LLM client ───────────────────────────────────────────────────────────────
+# anthropic is installed separately; pin it here when added.
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest==9.2.0
+pytest-asyncio==1.4.1.post1
+hypothesis==6.170.15
+
+# ── Quality ───────────────────────────────────────────────────────────────────
+ruff==0.17.4

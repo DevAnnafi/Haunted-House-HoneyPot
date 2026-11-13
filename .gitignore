@@ -1,6 +1,45 @@
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environment ───────────────────────────────────────────────────────
+.venv/
+venv/
+
+# ── Secrets and environment ───────────────────────────────────────────────────
+.env
+*.env
+secrets/
+
+# ── SSH host keys ─────────────────────────────────────────────────────────────
+honeypot/host_key
+honeypot/host_key.pub
 spikes/asyncssh/host_key
 spikes/asyncssh/host_key.pub
-__pycache__/
+
+# ── Testing and quality ───────────────────────────────────────────────────────
 .pytest_cache/
 .hypothesis/
-.venv/
+.coverage
+htmlcov/
+
+# ── Next.js / Node ────────────────────────────────────────────────────────────
+dashboard/node_modules/
+dashboard/.next/
+dashboard/out/
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*~
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
