@@ -206,7 +206,7 @@ def _check_shell_tool(tool_input: dict) -> str | None:
     # after a space (Remove-Item honeypot\foo.py), after -Path: flags, and
     # inside parentheses.
     # Capture everything up to the next whitespace or quote as the path tail.
-    path_re = re.compile(r'(?<![\w\-])honeypot/([\w./\-]*)')
+    path_re = re.compile(r"(?<![\w\-])honeypot/([\w./\-]*)")
     matches = path_re.findall(normalised_cmd)
 
     # Reconstruct the full relative path and check developer ownership.
@@ -260,9 +260,7 @@ def main() -> int:
         return 2
     except Exception as exc:
         print(
-            f"Ownership guard: unexpected error reading stdin: {exc}\n"
-            "\n"
-            "Blocking to fail closed.",
+            f"Ownership guard: unexpected error reading stdin: {exc}\n\nBlocking to fail closed.",
             file=sys.stderr,
         )
         return 2
