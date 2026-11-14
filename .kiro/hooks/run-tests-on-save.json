@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "run-tests-on-save",
+      "description": "When a .py file under honeypot/, api/, shared/, or tests/ is saved, run pytest quietly and report any failures.",
+      "trigger": "FileSave",
+      "matcher": "^(honeypot|api|shared|tests)/.*\\.py$",
+      "action": {
+        "type": "command",
+        "command": "python scripts/hooks/run_tests.py",
+        "timeout_ms": 60000
+      }
+    }
+  ]
+}

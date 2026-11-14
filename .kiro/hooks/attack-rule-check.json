@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "attack-rule-check",
+      "description": "When honeypot/attack.py is saved, verify every MITRE ATT&CK technique ID matches T\\d{4}(\\.\\d{3})? and report any that don't.",
+      "trigger": "FileSave",
+      "matcher": "^honeypot/attack\\.py$",
+      "action": {
+        "type": "command",
+        "command": "python scripts/hooks/check_attack_ids.py",
+        "timeout_ms": 10000
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "security-scan-on-save",
+      "description": "When a .py file under honeypot/ is saved, scan it for forbidden calls (subprocess, os.system, os.popen, eval, exec) and report findings with file and line number.",
+      "trigger": "FileSave",
+      "matcher": "^honeypot/.*\\.py$",
+      "action": {
+        "type": "command",
+        "command": "python scripts/hooks/security_scan.py",
+        "timeout_ms": 10000
+      }
+    }
+  ]
+}

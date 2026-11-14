@@ -364,10 +364,25 @@ Write `docs/deployment.md` covering: VPS prerequisites, moving the real SSH daem
 Satisfies: R1.8, R5.9, tech.md deployment.
 
 ### T9.5 — Kiro hooks [kiro]
-Write `.kiro/hooks/` entries for:
-- **On Python file save:** run `pytest` scoped to the file's corresponding test module (if one exists).
-- **On Python file save under `honeypot/`:** check that any new ATT&CK rule definitions use a valid MITRE technique ID format (`T\d{4}(\.\d{3})?`).
-- **On Python file save under `honeypot/`:** flag any use of `subprocess`, `os.system`, `eval`, or `exec` and report a warning in the Kiro agent output.
+Four hooks in `.kiro/hooks/`, each backed by a Python script in `scripts/hooks/`:
+
+- **`run-tests-on-save.json`** — PostFileSave, matches `^(honeypot|api|shared|tests)/.*\.py$`.
+  Runs `scripts/hooks/run_tests.py`, which derives the corresponding test module from the
+  saved file path and runs pytest quietly, reporting failures.
+
+- **`security-scan-on-save.json`** — PostFileSave, matches `^honeypot/.*\.py$`.
+  Runs `scripts/hooks/security_scan.py`, which scans for `subprocess`, `os.system(`,
+  `os.popen(`, `eval(`, and `exec(`, reporting file and line number; exits non-zero if found.
+
+- **`attack-rule-check.json`** — PostFileSave, matches `^honeypot/attack\.py$`.
+  Runs `scripts/hooks/check_attack_ids.py`, which checks every ATT&CK technique ID candidate
+  against `T\d{4}(\.\d{3})?` and reports invalid ones; exits non-zero if any are found.
+
+- **`ownership-guard.json`** — PreToolUse, matches `^(fs_write|fs_append|str_replace|delete_file)$`.
+  Runs `scripts/hooks/ownership_guard.py`, which reads the target path from the stdin JSON
+  payload and exits non-zero (blocking the tool call) if the path is under `honeypot/` and
+  is not `honeypot/__init__.py`.
+
 Satisfies: project conventions, security rules.
 
 ### T9.6 — Egress control for the honeypot container [dev]

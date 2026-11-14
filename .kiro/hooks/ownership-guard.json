@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "ownership-guard",
+      "description": "Block agent file-write, file-edit, and shell-command tool calls that would modify developer-owned paths under honeypot/ (except honeypot/__init__.py).",
+      "trigger": "PreToolUse",
+      "matcher": "^(fs_write|fs_append|str_replace|delete_file|execute_pwsh|execute_bash)$",
+      "action": {
+        "type": "command",
+        "command": "python scripts/hooks/ownership_guard.py",
+        "timeout_ms": 5000
+      }
+    }
+  ]
+}
