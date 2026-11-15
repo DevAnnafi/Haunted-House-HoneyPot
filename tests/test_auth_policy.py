@@ -159,3 +159,34 @@ def test_r1_15_load_from_env_returns_working_policy(
     assert loaded.check("root", "wrong") is False
     expected = AuthPolicy(credentials_file, FAKE_SECRET_HEX, DEMO_USER, DEMO_PASS)
     assert loaded.fingerprint("x") == expected.fingerprint("x")
+
+
+# --- lone surrogates ---
+# st.characters() excludes category "Cs" by default, so surrogates are added explicitly.
+SURROGATE_TEXT = st.text(
+    alphabet=st.one_of(
+        st.characters(),
+        st.characters(categories=["Cs"]),
+        st.sampled_from(["\ud800", "\udbff", "\udc00", "\udfff"]),
+    ),
+    max_size=64,
+)
+
+
+@given(username=SURROGATE_TEXT, password=SURROGATE_TEXT)
+def test_r1_surrogates_never_raise(username: str, password: str) -> None:
+    # Hypothesis fixtures are function-scoped, so build the policy inline.
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "credentials.toml"
+        path.write_text(CREDENTIALS_TOML, encoding="utf-8")
+        policy = AuthPolicy(path, FAKE_SECRET_HEX, DEMO_USER, DEMO_PASS)
+        assert isinstance(policy.check(username, password), bool)
+        assert HEX64.fullmatch(policy.fingerprint(password)) is not None
+
+
+def test_r1_surrogates_explicit(policy: AuthPolicy) -> None:
+    assert policy.check("\ud800", "\ud800") is False
+    assert policy.check(DEMO_USER, "\udfff") is False
+    assert HEX64.fullmatch(policy.fingerprint("\ud800")) is not None

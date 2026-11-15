@@ -37,11 +37,14 @@ class AuthPolicy:
         if (username, password) in self.credentials_pairs:
             return True
         return username == self.demo_username and hmac.compare_digest(
-            password.encode("utf-8"), self.demo_password.encode("utf-8")
+            password.encode("utf-8", "surrogatepass"),
+            self.demo_password.encode("utf-8", "surrogatepass"),
         )
 
     def fingerprint(self, password: str) -> str:
-        return hmac.new(self.fingerprint_key, password.encode("utf-8"), hashlib.sha256).hexdigest()
+        return hmac.new(
+            self.fingerprint_key, password.encode("utf-8", "surrogatepass"), hashlib.sha256
+        ).hexdigest()
 
 
 def load_auth_policy_from_env(credentials_path: Path) -> AuthPolicy:
