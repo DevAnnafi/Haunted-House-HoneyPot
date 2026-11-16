@@ -155,3 +155,58 @@ SSH library choice validated and accepted. Engineering design next.
 ### Status
 
 All blocking architecture decisions are made and recorded (ADR-0001 through ADR-0006). Engineering design next.
+
+# Devlog — November 12–16, 2026
+
+### Completed
+
+- **`design.md`:** 13 components with interfaces and requirement mappings, data model and per-role permissions, key flows, command compatibility table, haunt scoring, LLM output validation, STRIDE threat model, testing strategy, and deployment.
+- **ATT&CK rules refined to 15,** using sub-techniques where they fit (e.g. T1003.008 for `/etc/shadow`, T1087.001 for `/etc/passwd`, T1098.004 for `authorized_keys`).
+- **ADR amendments:** ADR-0004 now allows a narrow, column-level `UPDATE` on `sessions` so the honeypot can record how a session ended; ADR-0002 clarifies that it covers attacker passwords only, while dashboard accounts use a slow salted hash.
+- **`tasks.md`:** generated with Kiro's spec flow from requirements and design, then reviewed and corrected (missing integration tasks, a recorder interface moved earlier, ownership tags, submission tasks, an early live deployment).
+- **T1.1 scaffolding** (Kiro): repository layout, pinned `requirements.txt`, `pyproject.toml` with ruff.
+- **T9.3 CI** (Kiro): GitHub Actions running ruff and pytest with a PostgreSQL service container.
+- **T9.5 hooks** (Kiro): tests on save, security scan, ATT&CK ID check, and an ownership guard that blocks Kiro from writing developer-owned code.
+- **T1.2 auth policy** (me): credential-pair list, HMAC-SHA-256 fingerprints with a derived key, timing-safe demo login check, fail-closed configuration loading.
+- **T1.8 auth tests** (Kiro): 18 tests, including Hypothesis property tests.
+- **T1.5 admission control** (me): global, per-IP, and rolling-window rate limits.
+- **T1.9 admission tests** (Kiro): 10 tests, including a property test over random acquire/release/clock sequences.
+
+### Design decisions
+
+- **Recorder interface early:** every component records through a small interface with an in-memory fake for tests; the PostgreSQL recorder plugs in later without changes.
+- **Early deployment:** the honeypot goes live as soon as the SSH layer, filesystem, commands, and recorder work, so real attacker data accumulates before the demo.
+- **Domain-separated keys:** the password fingerprint key is derived from the master secret with its own label, so future keys (e.g. attacker identity) can never be substituted for it.
+- **Rate limit counts rejected attempts:** a flooding IP stays blocked until it stops for the full window.
+- **Configurable timeouts** instead of an injected clock for the idle and lifetime watchdogs, so tests can use short durations.
+
+### Lessons and surprises
+
+- **An AI guardrail that had never fired.** Kiro's steering refused to write into `honeypot/` on its own, which made the ownership guard look fine, but the hook itself had never run. Testing it live with deliberate attempts exposed six separate bugs, each of which let a write through:
+  1. Blocking requires **exit code 2**; the script used exit 1, which Kiro treats as a hook error, not a block.
+  2. A shortcut **allowed** the call when no payload arrived (fail open).
+  3. The path normalizer turned `c:\Users\...` into `c://Users//...`, so absolute Windows paths never matched.
+  4. The save hooks used an invalid trigger name (`PostFileSave` instead of `FileSave`), so they had never run either.
+  5. The shell check only matched `honeypot/` with a forward slash, missing PowerShell's `honeypot\`.
+  6. The regex required a quote or slash before the path, missing unquoted paths after a space.
+
+  Every script passed when tested manually. Only the end-to-end test proved the control. Shell detection remains best-effort; reviewing every diff before commit is the final control.
+- **Security checks must fail closed.** Twice, Kiro's first version skipped the check when it couldn't read its input (the security scan and the guard). For a control, "can't verify" must mean "block."
+- **Property tests found a real bug.** A lone Unicode surrogate in an attacker-supplied password made `fingerprint()` and `check()` raise `UnicodeEncodeError`. Fixed with `surrogatepass` encoding. I confirmed the tests fail without the fix and pass with it. (Hypothesis excludes surrogates by default; the strategy has to request them explicitly.)
+- **A package name is not an import name.** `requirements.txt` listed `dotenv` instead of `python-dotenv`. CI failed because no matching version existed, but `dotenv` on PyPI is an unrelated project: a near-miss typosquat. Pin from `pip freeze`, never by guessing.
+- **`.gitignore` doesn't untrack committed files.** An empty `.env` had been committed before it was ignored; `git rm --cached .env` removed it from tracking while keeping the local file.
+- **Packages went into the wrong Python.** With the venv inactive, `pip install` targeted the system Python and `ruff`/`pytest` weren't found. Every new terminal needs the venv activated.
+- **pytest exits with code 5 when it collects no tests,** which fails CI. A smoke test that imports each package keeps CI meaningful before real tests exist.
+- **CI caught formatting drift** from an AI edit, which is exactly its job.
+- **Rate limiter ordering is subtle.** The decision must be computed before recording the attempt, the attempt recorded every time (even when rejected), and the rejection returned afterwards. Returning early would let a flood slip back in.
+
+### Next steps
+
+1. T1.3: the real SSH server, wiring in `AuthPolicy` and `AdmissionController`, with a per-connection failure counter across both auth methods (R8.7).
+2. Prune stale rate-limit entries in `AdmissionController` before deployment.
+3. Settle the remaining design decisions: command flags and haunt score weights.
+4. Turn the ownership-guard test cases into permanent tests; add a format-on-save hook.
+
+### Status
+
+SSH layer in progress: auth policy and admission control are done and tested. CI and Kiro hooks are working. Roughly on schedule for an early deployment around Nov 22–24.
