@@ -1,8 +1,16 @@
 from collections import deque
 import time
 
+
 class AdmissionController:
-    def __init__(self, global_limit=100, per_ip_limit=5, rate_limit=10, rate_window=60.0, clock=time.monotonic):
+    def __init__(
+        self,
+        global_limit=100,
+        per_ip_limit=5,
+        rate_limit=10,
+        rate_window=60.0,
+        clock=time.monotonic,
+    ):
         self._open_total = 0
         self._open_per_ip = {}
         self._attempts = {}  # TODO: prune stale entries (IPs with no attempts in the last rate window)
@@ -21,10 +29,7 @@ class AdmissionController:
         attempts = self._attempts[ip]
 
         # if the rate limit is exceeded → return False
-        rate_exceeded = (
-            len(attempts) == self._rate_limit
-            and now - attempts[0] < self._rate_window
-        )
+        rate_exceeded = len(attempts) == self._rate_limit and now - attempts[0] < self._rate_window
 
         attempts.append(now)
 
