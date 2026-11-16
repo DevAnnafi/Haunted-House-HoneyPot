@@ -1,20 +1,22 @@
-from collections import deque
 import time
+from collections import deque
+from collections.abc import Callable
 
 
 class AdmissionController:
     def __init__(
         self,
-        global_limit=100,
-        per_ip_limit=5,
-        rate_limit=10,
-        rate_window=60.0,
-        clock=time.monotonic,
-    ):
+        global_limit: int = 100,
+        per_ip_limit: int = 5,
+        rate_limit: int = 10,
+        rate_window: float = 60.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._open_total = 0
         self._open_per_ip = {}
-        self._attempts = {}  # TODO: prune stale entries (IPs with no attempts in the last rate window)
+        # TODO: prune stale entries (IPs with no attempts in the last rate window)
         self._global_limit = global_limit
+        self._attempts = {}
         self._per_ip_limit = per_ip_limit
         self._rate_limit = rate_limit
         self._rate_window = rate_window
