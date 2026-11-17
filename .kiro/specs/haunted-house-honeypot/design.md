@@ -133,11 +133,12 @@ Each component lists its **responsibility**, **interface** (main classes and fun
 - **Responsibility:** an in-memory fake Linux filesystem, one copy per session.
 - **Interface:**
   - `Node`: `name`, `kind` (file/dir), `mode`, `owner`, `group`, `mtime`, `content` (files) or `children` (dirs).
-  - `VirtualFS.from_template(template) -> VirtualFS`: deep copy of the base filesystem built from `config/fs_template/`.
+  - `VirtualFS.from_template(template) -> VirtualFS`: deep copy of the base filesystem built from `config/fs_template.toml`.
   - `resolve(cwd, path) -> Node | None`: normalizes `.`, `..`, repeated slashes, and relative paths **inside the virtual root only**. `..` at `/` stays at `/`. Never consults the host filesystem.
   - `create_file`, `write_file`, `mkdir`, `remove`, `copy`, `move`: each checks **all** limits before changing anything, so a rejected operation leaves the tree unchanged (R2.9).
 - **Limits:** 1,000 entries, 64 KiB per file, 5 MiB total attacker-created content, depth 16.
 - **Symlinks:** not modeled in v1.0 (removes a whole class of path-escape bugs).
+- **Template format:** a single TOML file, `config/fs_template.toml` (no real directory tree on disk, so no host files resemble `/etc/shadow`). One `[[node]]` table per entry with `path` (absolute, virtual), `type` (`"file"` or `"dir"`), `mode` (octal string), `owner`, `group`, `mtime` (quoted RFC 3339 UTC string), `content` (files only), and an optional `size` (files only, integer bytes). `size` is the size shown by `ls -l`, `stat` and `du` for placeholder files such as binaries (e.g. `/bin/ls` shows 142312 bytes); when absent, the displayed size is the real content length. `Node` therefore needs an optional display-size field, which `from_template` fills from `size`. Display only: it does not change what `cat` reads, and should not count toward the R2.9 limits. Parents appear before children. The template is the level-0 system (Ubuntu 24.04, host `web-prod-01`) with no haunting content, and stays under 200 nodes so the R2.9 entry limit leaves room for attacker-created entries.
 - **Requirements:** R2.2–R2.4, R2.9, R2.12, R2.13.
 
 ### 3.8 Haunt Engine (`honeypot/haunt.py`)
@@ -573,3 +574,4 @@ Option 1 is easier to reason about; option 2 avoids a fourth container but LLM A
 4. **Egress control:** proxy container or host firewall (section 11)?
 5. **LLM provider:** still to be chosen (`tech.md`).
 6. **R7 identity policy:** an ADR is required before any R7 work.
+7. **`/dev/null` and device files:** the template has no device nodes (only `file` and `dir` types), so `/dev` is empty. Deferred until redirection (R2.15, Could, T2.13) is built. At that point, special-case `/dev/null` in the VFS so writes to it are discarded and reads return empty, rather than adding a device node type.

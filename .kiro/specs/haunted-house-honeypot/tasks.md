@@ -90,7 +90,7 @@ Implement `create_file`, `write_file`, `mkdir`, `remove`, `copy`, `move` in `Vir
 Satisfies: R2.4, R2.9.
 
 ### T2.3 — Filesystem template [kiro]
-Create `config/fs_template/` with a believable fake Ubuntu tree: `/`, `/home/user/`, `/root/`, `/etc/` (passwd, shadow, hostname, os-release, cron.d/), `/var/log/` (syslog, auth.log), `/tmp/`, `/usr/bin/`, `/bin/`. Populate files with plausible content (not real host data).
+Create `config/fs_template.toml` (one `[[node]]` table per entry; format in design.md §3.7, including the optional display `size`) with a believable fake Ubuntu tree: `/`, `/home/user/`, `/root/`, `/etc/` (passwd, shadow, hostname, os-release, cron.d/), `/var/log/` (syslog, auth.log), `/tmp/`, `/usr/bin/`, `/bin/`. Populate files with plausible content (not real host data).
 Satisfies: R2.2.
 
 ### T2.4 — Command engine: parser and registry [dev]

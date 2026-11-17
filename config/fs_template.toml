@@ -1,0 +1,1318 @@
+# Fake filesystem template (T2.3, R2.2). Level-0 "normal" system: no haunting content.
+#
+# Loaded by VirtualFS.from_template(). One [[node]] table per filesystem entry.
+#   path    absolute path inside the fake system (never a host path)
+#   type    "file" or "dir"
+#   mode    octal permissions as a string, e.g. "0644" ("1777" for sticky /tmp)
+#   owner   owning user name
+#   group   owning group name
+#   mtime   UTC timestamp, quoted string, RFC 3339 (e.g. "2026-09-14T08:12:00Z")
+#   content files only; text, written as a TOML literal string (''' ... ''')
+#   size    optional, files only; byte size to DISPLAY (ls -l, stat, du) when the real content is a
+#           short placeholder (e.g. a binary). When absent, display len(content in UTF-8 bytes).
+#           Display only: content stays what cat reads, and size is not counted toward R2.9 limits.
+#
+# Rules: a parent directory must appear before its children. The template must stay well
+# under 1,000 nodes so attackers keep room within the R2.9 entry limit.
+# All credentials, hashes, and keys below are FAKE. Hostnames use the reserved ".example"
+# TLD, IPs are RFC 5737 documentation ranges or RFC 1918 private ranges.
+# System: Ubuntu 24.04.1 LTS, host "web-prod-01", matching OpenSSH_9.6p1 Ubuntu-3ubuntu13.5.
+# Known simplifications: no symlinks (/bin is a real dir), /dev is empty (see design.md Open
+# Questions), binaries under /bin, /usr/bin and /boot are tiny placeholders with a display size.
+
+# ---------------------------------------------------------------------------
+# Directories
+# ---------------------------------------------------------------------------
+
+[[node]]
+path = "/"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:07Z"
+
+[[node]]
+path = "/bin"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-08-20T06:14:33Z"
+
+[[node]]
+path = "/boot"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-10-09T03:22:48Z"
+
+[[node]]
+path = "/dev"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-11-02T00:03:11Z"
+
+[[node]]
+path = "/etc"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-11-10T14:05:26Z"
+
+[[node]]
+path = "/etc/cron.d"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-06-18T11:47:02Z"
+
+[[node]]
+path = "/etc/ssh"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:52:19Z"
+
+[[node]]
+path = "/etc/ssh/sshd_config.d"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:55Z"
+
+[[node]]
+path = "/etc/nginx"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-04-02T16:30:09Z"
+
+[[node]]
+path = "/home"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:58:40Z"
+
+[[node]]
+path = "/home/deploy"
+type = "dir"
+mode = "0750"
+owner = "deploy"
+group = "deploy"
+mtime = "2026-11-14T17:36:51Z"
+
+[[node]]
+path = "/home/deploy/.ssh"
+type = "dir"
+mode = "0700"
+owner = "deploy"
+group = "deploy"
+mtime = "2026-05-07T10:12:44Z"
+
+[[node]]
+path = "/home/deploy/app"
+type = "dir"
+mode = "0755"
+owner = "deploy"
+group = "deploy"
+mtime = "2026-10-21T13:09:17Z"
+
+[[node]]
+path = "/opt"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:07Z"
+
+[[node]]
+path = "/opt/backup"
+type = "dir"
+mode = "0750"
+owner = "root"
+group = "root"
+mtime = "2026-09-03T21:18:36Z"
+
+[[node]]
+path = "/proc"
+type = "dir"
+mode = "0555"
+owner = "root"
+group = "root"
+mtime = "2026-11-02T00:03:05Z"
+
+[[node]]
+path = "/root"
+type = "dir"
+mode = "0700"
+owner = "root"
+group = "root"
+mtime = "2026-11-12T22:41:08Z"
+
+[[node]]
+path = "/root/.ssh"
+type = "dir"
+mode = "0700"
+owner = "root"
+group = "root"
+mtime = "2026-04-19T08:27:30Z"
+
+[[node]]
+path = "/srv"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:07Z"
+
+[[node]]
+path = "/tmp"
+type = "dir"
+mode = "1777"
+owner = "root"
+group = "root"
+mtime = "2026-11-16T06:25:01Z"
+
+[[node]]
+path = "/usr"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-08-20T06:14:30Z"
+
+[[node]]
+path = "/usr/bin"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-10-09T03:22:40Z"
+
+[[node]]
+path = "/usr/local"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:07Z"
+
+[[node]]
+path = "/usr/local/bin"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-07-15T12:00:21Z"
+
+[[node]]
+path = "/var"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:07Z"
+
+[[node]]
+path = "/var/backups"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-11-15T02:00:04Z"
+
+[[node]]
+path = "/var/backups/db"
+type = "dir"
+mode = "0750"
+owner = "root"
+group = "root"
+mtime = "2026-11-15T02:00:04Z"
+
+[[node]]
+path = "/var/log"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "syslog"
+mtime = "2026-11-16T06:25:01Z"
+
+[[node]]
+path = "/var/log/nginx"
+type = "dir"
+mode = "0755"
+owner = "www-data"
+group = "adm"
+mtime = "2026-11-16T05:48:12Z"
+
+[[node]]
+path = "/var/www"
+type = "dir"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-04-02T16:31:50Z"
+
+[[node]]
+path = "/var/www/html"
+type = "dir"
+mode = "0755"
+owner = "www-data"
+group = "www-data"
+mtime = "2026-10-21T13:11:02Z"
+
+# ---------------------------------------------------------------------------
+# /boot, /proc (placeholders)
+# ---------------------------------------------------------------------------
+
+[[node]]
+path = "/boot/vmlinuz-6.8.0-48-generic"
+type = "file"
+mode = "0600"
+owner = "root"
+group = "root"
+mtime = "2026-10-09T03:22:46Z"
+size = 14993800
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/boot/initrd.img-6.8.0-48-generic"
+type = "file"
+mode = "0600"
+owner = "root"
+group = "root"
+mtime = "2026-10-09T03:22:48Z"
+size = 68142592
+content = "070701"
+
+[[node]]
+path = "/proc/version"
+type = "file"
+mode = "0444"
+owner = "root"
+group = "root"
+mtime = "2026-11-02T00:03:05Z"
+content = '''
+Linux version 6.8.0-48-generic (buildd@lcy02-amd64-051) (x86_64-linux-gnu-gcc-13 (Ubuntu 13.2.0-23ubuntu4) 13.2.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #48-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep 27 14:04:52 UTC 2024
+'''
+
+# ---------------------------------------------------------------------------
+# /bin and /usr/bin and /usr/local/bin (placeholders)
+# ---------------------------------------------------------------------------
+
+[[node]]
+path = "/bin/bash"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-08-20T06:14:31Z"
+size = 1446024
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/bin/cat"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:40:12Z"
+size = 39232
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/bin/cp"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:40:12Z"
+size = 153976
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/bin/ls"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:40:12Z"
+size = 142312
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/bin/mkdir"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:40:12Z"
+size = 88512
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/bin/mv"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:40:12Z"
+size = 149608
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/bin/ps"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-05-28T07:52:19Z"
+size = 137688
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/bin/rm"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:40:12Z"
+size = 64320
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/bin/sh"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:40:12Z"
+size = 125688
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/bin/uname"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:40:12Z"
+size = 39368
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/usr/bin/awk"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:01Z"
+size = 715304
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/usr/bin/curl"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-09-17T04:33:26Z"
+size = 254864
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/usr/bin/find"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:01Z"
+size = 320368
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/usr/bin/grep"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:01Z"
+size = 186504
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/usr/bin/id"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:40:12Z"
+size = 39328
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/usr/bin/python3"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-07-02T19:05:48Z"
+size = 8021376
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/usr/bin/ssh"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-09-17T04:33:30Z"
+size = 1010120
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/usr/bin/sudo"
+type = "file"
+mode = "4755"
+owner = "root"
+group = "root"
+mtime = "2026-06-11T15:20:09Z"
+size = 277936
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/usr/bin/wget"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:03Z"
+size = 508392
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/usr/bin/whoami"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:40:12Z"
+size = 35184
+content = "\u007fELF\u0002\u0001\u0001"
+
+[[node]]
+path = "/usr/local/bin/healthcheck.sh"
+type = "file"
+mode = "0755"
+owner = "root"
+group = "root"
+mtime = "2026-07-15T12:00:21Z"
+content = '''
+#!/bin/bash
+# Simple liveness probe used by the load balancer.
+curl -fsS http://127.0.0.1/ > /dev/null || systemctl restart nginx
+'''
+
+# ---------------------------------------------------------------------------
+# /etc
+# ---------------------------------------------------------------------------
+
+[[node]]
+path = "/etc/hostname"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:44:16Z"
+content = '''
+web-prod-01
+'''
+
+[[node]]
+path = "/etc/hosts"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-04-02T16:28:51Z"
+content = '''
+127.0.0.1 localhost
+127.0.1.1 web-prod-01
+10.0.3.15 db01.internal.example db01
+
+# The following lines are desirable for IPv6 capable hosts
+::1     ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+'''
+
+[[node]]
+path = "/etc/os-release"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-08-20T06:14:12Z"
+content = '''
+PRETTY_NAME="Ubuntu 24.04.1 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.1 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+'''
+
+[[node]]
+path = "/etc/lsb-release"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-08-20T06:14:12Z"
+content = '''
+DISTRIB_ID=Ubuntu
+DISTRIB_RELEASE=24.04
+DISTRIB_CODENAME=noble
+DISTRIB_DESCRIPTION="Ubuntu 24.04.1 LTS"
+'''
+
+[[node]]
+path = "/etc/issue"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:44Z"
+content = '''
+Ubuntu 24.04.1 LTS \n \l
+
+'''
+
+[[node]]
+path = "/etc/passwd"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-05-07T10:12:02Z"
+content = '''
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+_apt:x:42:65534::/nonexistent:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+systemd-network:x:998:998:systemd Network Management:/:/usr/sbin/nologin
+systemd-timesync:x:996:996:systemd Time Synchronization:/:/usr/sbin/nologin
+messagebus:x:100:101::/nonexistent:/usr/sbin/nologin
+syslog:x:101:102::/nonexistent:/usr/sbin/nologin
+sshd:x:102:65534::/run/sshd:/usr/sbin/nologin
+deploy:x:1000:1000:Deploy User,,,:/home/deploy:/bin/bash
+'''
+
+[[node]]
+path = "/etc/group"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-05-07T10:12:02Z"
+content = '''
+root:x:0:
+daemon:x:1:
+bin:x:2:
+sys:x:3:
+adm:x:4:syslog,deploy
+tty:x:5:
+disk:x:6:
+lp:x:7:
+mail:x:8:
+news:x:9:
+uucp:x:10:
+man:x:12:
+proxy:x:13:
+kmem:x:15:
+dialout:x:20:
+cdrom:x:24:deploy
+sudo:x:27:deploy
+audio:x:29:
+dip:x:30:deploy
+www-data:x:33:
+backup:x:34:
+list:x:38:
+irc:x:39:
+shadow:x:42:
+utmp:x:43:
+video:x:44:
+plugdev:x:46:deploy
+staff:x:50:
+games:x:60:
+users:x:100:
+nogroup:x:65534:
+messagebus:x:101:
+syslog:x:102:
+systemd-network:x:998:
+systemd-timesync:x:996:
+deploy:x:1000:
+'''
+
+[[node]]
+path = "/etc/shadow"
+type = "file"
+mode = "0640"
+owner = "root"
+group = "shadow"
+mtime = "2026-05-07T10:12:02Z"
+content = '''
+root:$y$j9T$FAKEsaltFAKEsalt0000$FAKEhashFAKEhashFAKEhashFAKEhashFAKEhash0:20525:0:99999:7:::
+daemon:*:20161:0:99999:7:::
+bin:*:20161:0:99999:7:::
+sys:*:20161:0:99999:7:::
+sync:*:20161:0:99999:7:::
+games:*:20161:0:99999:7:::
+man:*:20161:0:99999:7:::
+lp:*:20161:0:99999:7:::
+mail:*:20161:0:99999:7:::
+news:*:20161:0:99999:7:::
+uucp:*:20161:0:99999:7:::
+proxy:*:20161:0:99999:7:::
+www-data:*:20161:0:99999:7:::
+backup:*:20161:0:99999:7:::
+list:*:20161:0:99999:7:::
+irc:*:20161:0:99999:7:::
+_apt:*:20161:0:99999:7:::
+nobody:*:20161:0:99999:7:::
+systemd-network:!*:20161::::::
+systemd-timesync:!*:20161::::::
+messagebus:!:20161::::::
+syslog:!:20161::::::
+sshd:!:20161::::::
+deploy:$y$j9T$FAKEsaltFAKEsalt1111$FAKEhashFAKEhashFAKEhashFAKEhashFAKEhash1:20580:0:99999:7:::
+'''
+
+[[node]]
+path = "/etc/crontab"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:44Z"
+content = '''
+# /etc/crontab: system-wide crontab
+# Unlike any other crontab you don't have to run the `crontab'
+# command to install the new version when you edit this file
+# and files in /etc/cron.d. These files also have username fields,
+# that none of the other crontabs do.
+
+SHELL=/bin/sh
+# You can also override PATH, but by default, newer versions inherit it from the environment
+#PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Example of job definition:
+# .---------------- minute (0 - 59)
+# |  .------------- hour (0 - 23)
+# |  |  .---------- day of month (1 - 31)
+# |  |  |  .------- month (1 - 12) OR jan,feb,mar,apr ...
+# |  |  |  |  .---- day of week (0 - 6) (Sunday=0 or 7) OR sun,mon,tue,wed,thu,fri,sat
+# |  |  |  |  |
+# *  *  *  *  * user-name command to be executed
+17 *	* * *	root	cd / && run-parts --report /etc/cron.hourly
+25 6	* * *	root	test -x /usr/sbin/anacron || { cd / && run-parts --report /etc/cron.daily; }
+47 6	* * 7	root	test -x /usr/sbin/anacron || { cd / && run-parts --report /etc/cron.weekly; }
+52 6	1 * *	root	test -x /usr/sbin/anacron || { cd / && run-parts --report /etc/cron.monthly; }
+#
+'''
+
+[[node]]
+path = "/etc/cron.d/backup"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-09-03T21:20:14Z"
+content = '''
+# Nightly database backup
+0 2 * * * root /opt/backup/backup_db.sh >> /var/log/backup.log 2>&1
+'''
+
+[[node]]
+path = "/etc/ssh/sshd_config"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:52:19Z"
+content = '''
+# This is the sshd server system-wide configuration file.  See
+# sshd_config(5) for more information.
+
+Include /etc/ssh/sshd_config.d/*.conf
+
+#Port 22
+#AddressFamily any
+#ListenAddress 0.0.0.0
+#ListenAddress ::
+
+#PermitRootLogin prohibit-password
+PermitRootLogin yes
+#StrictModes yes
+#MaxAuthTries 6
+#MaxSessions 10
+
+#PubkeyAuthentication yes
+#PasswordAuthentication yes
+#PermitEmptyPasswords no
+
+KbdInteractiveAuthentication no
+
+UsePAM yes
+
+X11Forwarding yes
+PrintMotd no
+
+# Allow client to pass locale environment variables
+AcceptEnv LANG LC_*
+
+# override default of no subsystems
+Subsystem	sftp	/usr/lib/openssh/sftp-server
+'''
+
+[[node]]
+path = "/etc/ssh/sshd_config.d/50-cloud-init.conf"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:55Z"
+content = '''
+PasswordAuthentication yes
+'''
+
+[[node]]
+path = "/etc/nginx/nginx.conf"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-04-02T16:30:09Z"
+content = '''
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+	worker_connections 768;
+}
+
+http {
+	sendfile on;
+	tcp_nopush on;
+	types_hash_max_size 2048;
+	server_tokens off;
+
+	include /etc/nginx/mime.types;
+	default_type application/octet-stream;
+
+	access_log /var/log/nginx/access.log;
+
+	server {
+		listen 80 default_server;
+		server_name _;
+		root /var/www/html;
+		index index.html;
+
+		location / {
+			try_files $uri $uri/ =404;
+		}
+	}
+}
+'''
+
+# ---------------------------------------------------------------------------
+# /root
+# ---------------------------------------------------------------------------
+
+[[node]]
+path = "/root/.bashrc"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:44Z"
+content = '''
+# ~/.bashrc: executed by bash(1) for non-login shells.
+
+# If not running interactively, don't do anything
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+
+# don't put duplicate lines or lines starting with space in the history.
+HISTCONTROL=ignoreboth
+
+# append to the history file, don't overwrite it
+shopt -s histappend
+
+# for setting history length see HISTSIZE and HISTFILESIZE in bash(1)
+HISTSIZE=1000
+HISTFILESIZE=2000
+
+# check the window size after each command and, if necessary,
+# update the values of LINES and COLUMNS.
+shopt -s checkwinsize
+
+# set variable identifying the chroot you work in (used in the prompt below)
+if [ -z "${debian_chroot:-}" ] && [ -r /etc/debian_chroot ]; then
+    debian_chroot=$(cat /etc/debian_chroot)
+fi
+
+PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+
+# enable color support of ls and also add handy aliases
+if [ -x /usr/bin/dircolors ]; then
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+    alias ls='ls --color=auto'
+    alias grep='grep --color=auto'
+fi
+
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+'''
+
+[[node]]
+path = "/root/.profile"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-03-12T09:41:44Z"
+content = '''
+# ~/.profile: executed by Bourne-compatible login shells.
+
+if [ "$BASH" ]; then
+  if [ -f ~/.bashrc ]; then
+    . ~/.bashrc
+  fi
+fi
+
+mesg n 2> /dev/null || true
+'''
+
+[[node]]
+path = "/root/.bash_history"
+type = "file"
+mode = "0600"
+owner = "root"
+group = "root"
+mtime = "2026-11-12T22:41:08Z"
+content = '''
+apt update
+apt upgrade -y
+systemctl status nginx
+cat /etc/nginx/nginx.conf
+vim /opt/backup/backup_db.sh
+/opt/backup/backup_db.sh
+ls -la /var/backups/db
+tail -f /var/log/nginx/error.log
+systemctl restart nginx
+crontab -l
+cat /etc/cron.d/backup
+df -h
+free -m
+ssh deploy@10.0.3.20
+history
+'''
+
+[[node]]
+path = "/root/.ssh/authorized_keys"
+type = "file"
+mode = "0600"
+owner = "root"
+group = "root"
+mtime = "2026-04-19T08:27:30Z"
+content = '''
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeFakeFakeFakeFakeFakeFakeFakeFakeFake000 ops-laptop@example.invalid
+'''
+
+# ---------------------------------------------------------------------------
+# /home/deploy
+# ---------------------------------------------------------------------------
+
+[[node]]
+path = "/home/deploy/.bashrc"
+type = "file"
+mode = "0644"
+owner = "deploy"
+group = "deploy"
+mtime = "2026-03-12T09:58:40Z"
+content = '''
+# ~/.bashrc: executed by bash(1) for non-login shells.
+
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+
+HISTCONTROL=ignoreboth
+shopt -s histappend
+HISTSIZE=1000
+HISTFILESIZE=2000
+shopt -s checkwinsize
+
+PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+'''
+
+[[node]]
+path = "/home/deploy/.profile"
+type = "file"
+mode = "0644"
+owner = "deploy"
+group = "deploy"
+mtime = "2026-03-12T09:58:40Z"
+content = '''
+# ~/.profile: executed by the command interpreter for login shells.
+
+if [ -n "$BASH_VERSION" ]; then
+    if [ -f "$HOME/.bashrc" ]; then
+        . "$HOME/.bashrc"
+    fi
+fi
+
+if [ -d "$HOME/bin" ] ; then
+    PATH="$HOME/bin:$PATH"
+fi
+'''
+
+[[node]]
+path = "/home/deploy/.bash_logout"
+type = "file"
+mode = "0644"
+owner = "deploy"
+group = "deploy"
+mtime = "2026-03-12T09:58:40Z"
+content = '''
+# ~/.bash_logout: executed by bash(1) when login shell exits.
+
+# when leaving the console clear the screen to increase privacy
+
+if [ "$SHLVL" = 1 ]; then
+    [ -x /usr/bin/clear_console ] && /usr/bin/clear_console -q
+fi
+'''
+
+[[node]]
+path = "/home/deploy/.bash_history"
+type = "file"
+mode = "0600"
+owner = "deploy"
+group = "deploy"
+mtime = "2026-11-14T17:36:51Z"
+content = '''
+cd app
+git pull
+vim config.yml
+sudo systemctl restart nginx
+cat ~/notes.txt
+tail -n 50 /var/log/nginx/access.log
+sudo cat /var/www/html/.env
+exit
+'''
+
+[[node]]
+path = "/home/deploy/.ssh/authorized_keys"
+type = "file"
+mode = "0600"
+owner = "deploy"
+group = "deploy"
+mtime = "2026-05-07T10:12:44Z"
+content = '''
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeFakeFakeFakeFakeFakeFakeFakeFakeFake111 deploy@example.invalid
+'''
+
+[[node]]
+path = "/home/deploy/notes.txt"
+type = "file"
+mode = "0644"
+owner = "deploy"
+group = "deploy"
+mtime = "2026-10-28T09:47:15Z"
+content = '''
+TODO
+- rotate the db password (still the old one in /var/www/html/.env)
+- move backups off this box, /var/backups/db is filling up
+- ask Dana about the staging VPN
+- renew TLS cert before Dec 1
+
+staging db: db01.internal.example  user: app_user  pw: Stag1ng-Pa55-2026
+'''
+
+[[node]]
+path = "/home/deploy/app/config.yml"
+type = "file"
+mode = "0640"
+owner = "deploy"
+group = "deploy"
+mtime = "2026-10-21T13:09:17Z"
+content = '''
+app:
+  name: storefront
+  port: 8080
+  debug: false
+database:
+  host: db01.internal.example
+  port: 5432
+  name: storefront
+  user: app_user
+  password: Pr0d-Sh0pDB-4821
+cache:
+  host: 127.0.0.1
+  port: 6379
+'''
+
+[[node]]
+path = "/home/deploy/app/README.md"
+type = "file"
+mode = "0644"
+owner = "deploy"
+group = "deploy"
+mtime = "2026-06-30T15:22:03Z"
+content = '''
+# storefront
+
+Internal storefront service. Deploys are pulled to this host and served behind nginx.
+
+    git pull && sudo systemctl restart storefront
+'''
+
+# ---------------------------------------------------------------------------
+# /opt, /srv, /tmp, /var
+# ---------------------------------------------------------------------------
+
+[[node]]
+path = "/opt/backup/backup_db.sh"
+type = "file"
+mode = "0750"
+owner = "root"
+group = "root"
+mtime = "2026-09-03T21:18:36Z"
+content = '''
+#!/bin/bash
+# Nightly backup of the storefront database. Run from cron (/etc/cron.d/backup).
+set -euo pipefail
+
+DB_HOST="db01.internal.example"
+DB_USER="backup_svc"
+DB_PASS="Bkp-Svc-7730-Zq"
+DB_NAME="storefront"
+OUT="/var/backups/db/app_$(date +%F).sql"
+
+PGPASSWORD="$DB_PASS" pg_dump -h "$DB_HOST" -U "$DB_USER" "$DB_NAME" > "$OUT"
+chmod 600 "$OUT"
+find /var/backups/db -name 'app_*.sql' -mtime +14 -delete
+echo "$(date -Is) backup ok: $OUT"
+'''
+
+[[node]]
+path = "/var/backups/db/app_2026-11-15.sql"
+type = "file"
+mode = "0600"
+owner = "root"
+group = "root"
+mtime = "2026-11-15T02:00:04Z"
+content = '''
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 16.4 (Ubuntu 16.4-0ubuntu0.24.04.2)
+-- Dumped by pg_dump version 16.4 (Ubuntu 16.4-0ubuntu0.24.04.2)
+
+CREATE TABLE public.customers (
+    id integer NOT NULL,
+    email text NOT NULL,
+    created_at timestamp without time zone
+);
+
+COPY public.customers (id, email, created_at) FROM stdin;
+1	alice@example.invalid	2026-01-04 10:12:55
+2	bob@example.invalid	2026-01-09 18:40:02
+3	carol@example.invalid	2026-02-17 07:03:41
+\.
+'''
+
+[[node]]
+path = "/var/www/html/index.html"
+type = "file"
+mode = "0644"
+owner = "www-data"
+group = "www-data"
+mtime = "2026-10-21T13:11:02Z"
+content = '''
+<!DOCTYPE html>
+<html>
+<head><title>Storefront</title></head>
+<body>
+<h1>Storefront</h1>
+<p>Coming soon.</p>
+</body>
+</html>
+'''
+
+[[node]]
+path = "/var/www/html/.env"
+type = "file"
+mode = "0640"
+owner = "www-data"
+group = "www-data"
+mtime = "2026-08-12T11:34:27Z"
+content = '''
+APP_ENV=production
+APP_KEY=base64:RkFLRUZBS0VGQUtFRkFLRUZBS0VGQUtFRkFLRUZBS0U=
+DB_CONNECTION=pgsql
+DB_HOST=db01.internal.example
+DB_PORT=5432
+DB_DATABASE=storefront
+DB_USERNAME=app_user
+DB_PASSWORD=Pr0d-Sh0pDB-4821
+MAIL_HOST=smtp.example.invalid
+MAIL_USERNAME=noreply
+MAIL_PASSWORD=Ma1l-Relay-0042
+'''
+
+# ---------------------------------------------------------------------------
+# /var/log
+# ---------------------------------------------------------------------------
+
+[[node]]
+path = "/var/log/auth.log"
+type = "file"
+mode = "0640"
+owner = "syslog"
+group = "adm"
+mtime = "2026-11-16T06:25:01Z"
+content = '''
+2026-11-15T21:03:12.418201+00:00 web-prod-01 sshd[18422]: Accepted publickey for deploy from 10.0.0.42 port 51734 ssh2: ED25519 SHA256:FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE000
+2026-11-15T21:03:12.431877+00:00 web-prod-01 sshd[18422]: pam_unix(sshd:session): session opened for user deploy(uid=1000) by (uid=0)
+2026-11-15T21:03:12.440519+00:00 web-prod-01 systemd-logind[742]: New session 214 of user deploy.
+2026-11-15T21:09:47.902115+00:00 web-prod-01 sudo:   deploy : TTY=pts/0 ; PWD=/home/deploy/app ; USER=root ; COMMAND=/usr/bin/systemctl restart nginx
+2026-11-15T21:09:47.903002+00:00 web-prod-01 sudo: pam_unix(sudo:session): session opened for user root(uid=0) by deploy(uid=1000)
+2026-11-15T21:09:48.211344+00:00 web-prod-01 sudo: pam_unix(sudo:session): session closed for user root
+2026-11-15T21:41:30.115520+00:00 web-prod-01 sshd[18422]: pam_unix(sshd:session): session closed for user deploy
+2026-11-15T21:41:30.122871+00:00 web-prod-01 systemd-logind[742]: Session 214 logged out. Waiting for processes to exit.
+2026-11-16T03:17:44.600912+00:00 web-prod-01 sshd[19051]: Invalid user admin from 198.51.100.77 port 40218
+2026-11-16T03:17:46.882340+00:00 web-prod-01 sshd[19051]: Failed password for invalid user admin from 198.51.100.77 port 40218 ssh2
+2026-11-16T03:17:49.014478+00:00 web-prod-01 sshd[19051]: Connection closed by invalid user admin 198.51.100.77 port 40218 [preauth]
+2026-11-16T06:25:01.482113+00:00 web-prod-01 CRON[19320]: pam_unix(cron:session): session opened for user root(uid=0) by root(uid=0)
+2026-11-16T06:25:01.507726+00:00 web-prod-01 CRON[19320]: pam_unix(cron:session): session closed for user root
+'''
+
+[[node]]
+path = "/var/log/syslog"
+type = "file"
+mode = "0640"
+owner = "syslog"
+group = "adm"
+mtime = "2026-11-16T06:25:01Z"
+content = '''
+2026-11-16T05:48:12.204118+00:00 web-prod-01 systemd[1]: Reloading nginx.service - A high performance web server and a reverse proxy server...
+2026-11-16T05:48:12.290671+00:00 web-prod-01 systemd[1]: Reloaded nginx.service - A high performance web server and a reverse proxy server.
+2026-11-16T06:00:01.011937+00:00 web-prod-01 systemd[1]: Starting apt-daily.service - Daily apt download activities...
+2026-11-16T06:00:03.552804+00:00 web-prod-01 systemd[1]: apt-daily.service: Deactivated successfully.
+2026-11-16T06:00:03.553412+00:00 web-prod-01 systemd[1]: Finished apt-daily.service - Daily apt download activities.
+2026-11-16T06:17:01.120556+00:00 web-prod-01 CRON[19288]: (root) CMD (cd / && run-parts --report /etc/cron.hourly)
+2026-11-16T06:25:01.490231+00:00 web-prod-01 CRON[19321]: (root) CMD (test -x /usr/sbin/anacron || { cd / && run-parts --report /etc/cron.daily; })
+2026-11-16T06:25:02.883719+00:00 web-prod-01 systemd[1]: Starting logrotate.service - Rotate log files...
+2026-11-16T06:25:03.340102+00:00 web-prod-01 systemd[1]: logrotate.service: Deactivated successfully.
+2026-11-16T06:25:03.341288+00:00 web-prod-01 systemd[1]: Finished logrotate.service - Rotate log files.
+'''
+
+[[node]]
+path = "/var/log/dpkg.log"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-11-09T06:03:27Z"
+content = '''
+2026-11-09 06:03:22 status installed openssh-server:amd64 1:9.6p1-3ubuntu13.5
+2026-11-09 06:03:25 status half-configured libssl3t64:amd64 3.0.13-0ubuntu3.4
+2026-11-09 06:03:26 status installed libssl3t64:amd64 3.0.13-0ubuntu3.4
+2026-11-09 06:03:27 status installed man-db:amd64 2.12.0-4build2
+'''
+
+[[node]]
+path = "/var/log/nginx/access.log"
+type = "file"
+mode = "0640"
+owner = "www-data"
+group = "adm"
+mtime = "2026-11-16T05:48:12Z"
+content = '''
+203.0.113.14 - - [16/Nov/2026:05:31:09 +0000] "GET / HTTP/1.1" 200 148 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+203.0.113.14 - - [16/Nov/2026:05:31:09 +0000] "GET /favicon.ico HTTP/1.1" 404 134 "http://web-prod-01/" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+198.51.100.77 - - [16/Nov/2026:03:16:51 +0000] "GET /wp-login.php HTTP/1.1" 404 134 "-" "curl/8.5.0"
+10.0.0.5 - - [16/Nov/2026:05:48:00 +0000] "GET / HTTP/1.1" 200 148 "-" "kube-probe/1.30"
+'''
+
+[[node]]
+path = "/var/log/nginx/error.log"
+type = "file"
+mode = "0640"
+owner = "www-data"
+group = "adm"
+mtime = "2026-11-16T03:16:51Z"
+content = '''
+2026/11/16 03:16:51 [error] 1204#1204: *4812 open() "/var/www/html/wp-login.php" failed (2: No such file or directory), client: 198.51.100.77, server: _, request: "GET /wp-login.php HTTP/1.1", host: "web-prod-01"
+'''
+
+[[node]]
+path = "/var/log/backup.log"
+type = "file"
+mode = "0644"
+owner = "root"
+group = "root"
+mtime = "2026-11-15T02:00:06Z"
+content = '''
+2026-11-14T02:00:05+00:00 backup ok: /var/backups/db/app_2026-11-14.sql
+2026-11-15T02:00:05+00:00 backup ok: /var/backups/db/app_2026-11-15.sql
+'''
