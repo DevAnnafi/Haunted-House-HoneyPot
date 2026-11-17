@@ -210,3 +210,37 @@ All blocking architecture decisions are made and recorded (ADR-0001 through ADR-
 ### Status
 
 SSH layer in progress: auth policy and admission control are done and tested. CI and Kiro hooks are working. Roughly on schedule for an early deployment around Nov 22–24.
+
+# Devlog — November 16, 2026 (evening)
+
+### Completed
+
+- **T1.3 SSH server** (me): `honeypot/ssh_server.py` with `HoneypotServer` and a module-level `create_honeypot_server`. Admission control runs in `connection_made`; every auth attempt is logged with an HMAC fingerprint (never the password); a per-connection failure counter closes the connection after 5 failures (R8.7); every ADR-0001 security option is set explicitly.
+- **T1.4 forwarding refusals** (me): local, remote, and Unix-socket forwarding are refused explicitly and logged as `FORWARD DENIED`, instead of relying on asyncssh's defaults.
+- **T1.7 SSH server tests** (Kiro): integration tests against the real server on port 0 (login, exec, wrong password, version banner, forwarding, SFTP/SCP, agent/X11, per-IP limit with release on disconnect) and unit tests with a fake connection (failure limit, fingerprint logging, single-line log property test). CI is green.
+
+### Design decisions
+
+- **Dependency injection:** asyncssh creates one server object per connection with no arguments, so `create_honeypot_server` passes a factory, `lambda: HoneypotServer(auth, admission)`, giving every connection the same shared `AuthPolicy` and `AdmissionController`. Tests use it to inject a test secret and tiny limits.
+- **Release only what was acquired:** `connection_lost` releases the admission slot only if the connection was admitted, and clears the flag so a duplicate call can't release twice. Otherwise refused connections would free slots they never held.
+- **`logging` instead of `print`:** levels, formatted arguments, and `%r` for attacker-controlled values, so the entry point and recorder can capture every security event.
+
+### Lessons and surprises
+
+- **A callback that crashes can look like a working refusal.** The first forwarding overrides referenced `self.client_ip` instead of `self._client_ip`. Each one raised `AttributeError`, asyncssh treated the crash as a refusal, and the tests passed, but nothing was logged. Only a test that asserts the refusal is *recorded* (not just that it happens) catches this.
+- **One wrong character can silently drop a log line.** A `$s` instead of `%s` gave a format string fewer placeholders than values. Python's logging doesn't raise; it prints a "Logging error" traceback and discards the message.
+- **A strict `xfail` test can announce its own fix.** Kiro recorded the "factory is indented inside the class" bug as a strict expected failure. Once I dedented the function, the test reported XPASS and failed the suite on purpose: a reminder to remove the marker.
+- **Check what's actually on disk.** Twice, the file on disk didn't match the version I'd written: once half-updated, once with a signature pasted into the wrong file. `Get-Content` showed the truth faster than rereading the editor.
+- **`ruff check --fix` acts on the file as it is right now.** Run on the stale version, it removed `Path` and `Callable` as unused, and the corrected code then failed on missing imports. Save first, then fix.
+
+### Next steps
+
+1. Kiro: T2.3 (fake filesystem template) and T5.1 (SQL migration), in parallel with my work.
+2. T1.6: the shell loop in `honeypot/shell.py`, building on the spike's resize handling.
+3. T1.10: entry point and config loader.
+4. T2.1–T2.2: the virtual filesystem.
+5. T1.5a: prune stale rate-limit entries before deployment.
+
+### Status
+
+SSH layer complete except the shell. Target: early live deployment around Nov 22–24.
