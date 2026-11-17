@@ -90,26 +90,55 @@ class HoneypotServer(asyncssh.SSHServer):
 
         return success
 
-    async def create_honeypot_server(
-        auth: AuthPolicy,
-        admission: AdmissionController,
-        host: str,
-        port: int,
-        host_key_path: Path,
-        process_factory: Callable,
-    ) -> asyncssh.SSHAcceptor:
-        return await asyncssh.create_server(
-            lambda: HoneypotServer(auth, admission),
-            host,
-            port,
-            server_host_keys=[str(host_key_path)],
-            process_factory=process_factory,
-            agent_forwarding=False,
-            x11_forwarding=False,
-            sftp_factory=None,
-            allow_scp=False,
-            login_timeout=15,
-            rdns_lookup=False,
-            max_line_length=4096,
-            server_version="OpenSSH_9.6p1 Ubuntu-3ubuntu13.5",
+    def connection_requested(
+        self, dest_host: str, dest_port: int, orig_host: str, orig_port: int
+    ) -> bool:
+        log.warning(
+            "FORWARD DENIED type=local ip=%s dest=%r:%s",
+            self._client_ip,
+            dest_host,
+            dest_port,
         )
+        return False
+
+    def server_requested(self, listen_host: str, listen_port: int) -> bool:
+        log.warning(
+            "FORWARD DENIED type=remote ip=%s listen=%r:%s",
+            self._client_ip,
+            listen_host,
+            listen_port,
+        )
+        return False
+
+    def unix_connection_requested(self, dest_path: str) -> bool:
+        log.warning("FORWARD DENIED type=unix-local ip=%s dest=%r", self._client_ip, dest_path)
+        return False
+
+    def unix_server_requested(self, listen_path: str) -> bool:
+        log.warning("FORWARD DENIED type=unix-remote ip=%s listen=%r", self._client_ip, listen_path)
+        return False
+
+
+async def create_honeypot_server(
+    auth: AuthPolicy,
+    admission: AdmissionController,
+    host: str,
+    port: int,
+    host_key_path: Path,
+    process_factory: Callable,
+) -> asyncssh.SSHAcceptor:
+    return await asyncssh.create_server(
+        lambda: HoneypotServer(auth, admission),
+        host,
+        port,
+        server_host_keys=[str(host_key_path)],
+        process_factory=process_factory,
+        agent_forwarding=False,
+        x11_forwarding=False,
+        sftp_factory=None,
+        allow_scp=False,
+        login_timeout=15,
+        rdns_lookup=False,
+        max_line_length=4096,
+        server_version="OpenSSH_9.6p1 Ubuntu-3ubuntu13.5",
+    )

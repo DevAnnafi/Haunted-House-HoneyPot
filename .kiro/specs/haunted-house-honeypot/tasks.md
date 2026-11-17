@@ -44,8 +44,8 @@ Implement `run_interactive` and `run_exec` in `honeypot/shell.py`. Enforce the 4
 Satisfies: R1.4, R1.9, R4.9, R8.6.
 
 ### T1.7 — Tests: SSH layer (integration) [kiro]
-Write `tests/test_ssh_integration.py`. Start the honeypot on port 0. Using an asyncssh client:
-- Verify interactive shell is presented within 2 s after successful auth.
+Write `tests/test_ssh_server.py`. Start the honeypot on port 0. Using an asyncssh client:
+- Verify interactive shell is presented within 2 s after successful auth. (Covered by the T1.6 tests, not here.)
 - Verify exec request returns simulated output and exit status.
 - Verify rejected auth produces telemetry and no shell access.
 - Verify forwarding, SFTP, SCP, agent, and X11 requests are all rejected.
