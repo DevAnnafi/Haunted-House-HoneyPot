@@ -45,7 +45,7 @@ The dashboard frontend is a Next.js static export served by the API (ADR-0005).
 ## Database
 
 - **PostgreSQL** with least-privilege roles: `schema_owner` (migrations only), `honeypot_writer`, `dashboard_admin`, `dashboard_judge` (ADR-0004).
-- **Migrations:** plain SQL files in `migrations/`, applied in order by `schema_owner`.
+- **Migrations:** plain SQL files in `migrations/`, applied in order by a superuser using `SET ROLE schema_owner` (`schema_owner` is `NOLOGIN`, so nobody can log in as the table owner).
 - All queries use **parameterized placeholders** (`%s`). Never build SQL with f-strings or string concatenation.
 - `NOTIFY` payloads carry IDs only, never event contents.
 

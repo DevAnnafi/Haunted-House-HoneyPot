@@ -31,7 +31,7 @@ durable store that:
 | Role | Used by | Permissions |
 |---|---|---|
 | `schema_owner` | Migrations only, never at runtime | Owns all tables |
-| `honeypot_writer` | SSH honeypot | `INSERT` on event tables; `UPDATE` on three `sessions` columns only (`ended_at`, `final_haunt_level`, `end_reason`); `SELECT`/`UPDATE` on the LLM usage counter |
+| `honeypot_writer` | SSH honeypot | `INSERT` on event tables; `UPDATE` on three `sessions` columns only (`ended_at`, `final_haunt_level`, `end_reason`) plus `SELECT` on `sessions.session_id` only; `SELECT`/`UPDATE` on the LLM usage counter |
 | `dashboard_admin` | Dashboard API, admin requests | `SELECT` on all event tables; `DELETE` on session recordings (R5.9) |
 | `dashboard_judge` | Dashboard API, judge requests | `SELECT` only (R6.16) |
 
@@ -82,7 +82,7 @@ environment variables, never committed.
 
 ## Verification
 
-- [ ] `honeypot_writer` cannot `SELECT`, `UPDATE`, or `DELETE` event tables.
+- [ ] `honeypot_writer` cannot `SELECT`, `UPDATE`, or `DELETE` rows in `events` or `detections`, and on `sessions` can `SELECT` only the `session_id` column (needed because PostgreSQL requires `SELECT` on any column an `UPDATE ... WHERE` reads). It cannot `DELETE` anything.
 - [ ] `honeypot_writer` can read and update the LLM usage counter, and the counter survives a restart.
 - [ ] `dashboard_judge` cannot `DELETE` or `UPDATE` anything.
 - [ ] `dashboard_admin` can delete a session recording.
