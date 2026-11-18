@@ -75,6 +75,7 @@ Satisfies: R8.1, R8.2, R8.3, R8.10.
 
 ### T1.10 — Honeypot entry point and config loader [dev]
 Implement `honeypot/__main__.py` as the service entry point. Implement a config loader that reads all settings and secrets from environment variables (database URL, HMAC secret, LLM API key, demo credential, SSH port, host key path, idle timeout, lifetime limit, setup timeout). Raise `ConfigurationError` with a clear message on any missing required value. Apply the Windows selector event loop policy (see T9.2). Timeouts must be passed as configurable values so tests can use short durations.
+Configure logging at startup: `honeypot.*` loggers at INFO, and the `asyncssh` logger at WARNING. asyncssh's INFO logs include raw attacker-controlled commands and usernames, which enables log injection and escape sequences in the admin's terminal (CWE-117, found in manual testing of T1.6). Log one startup line with the listening host and port.
 Satisfies: R1.1, tech.md platform notes, tech.md deployment.
 
 ---

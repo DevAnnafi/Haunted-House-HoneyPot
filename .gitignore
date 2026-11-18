@@ -22,6 +22,7 @@ honeypot/host_key
 honeypot/host_key.pub
 spikes/asyncssh/host_key
 spikes/asyncssh/host_key.pub
+*host_key*
 
 # ── Testing and quality ───────────────────────────────────────────────────────
 .pytest_cache/
@@ -43,3 +44,6 @@ dashboard/out/
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+# ── Local dev scripts ─────────────────────────────────────────────────────────
+scripts/dev_*.py
