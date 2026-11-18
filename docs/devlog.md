@@ -244,3 +244,41 @@ SSH layer in progress: auth policy and admission control are done and tested. CI
 ### Status
 
 SSH layer complete except the shell. Target: early live deployment around Nov 22–24.
+
+# Devlog — November 17, 2026
+
+### Completed
+
+- **T5.1 verified in CI:** the migration and all role-permission tests ran against a real PostgreSQL 16 server and passed (74 passed, 1 skipped for R8.8). ADR-0004's least-privilege guarantees are now tested on every push, not just documented.
+- **T1.6 (part 1), `sanitize_for_terminal`** (me): strips every Unicode `Cc` control character except `\n` and `\t`, which covers C0, DEL, and C1 in one check, so ESC-based sequences (CSI, OSC 52 clipboard writes, OSC 8 hyperlinks, window titles) and the single-character C1 forms like `\x9b` are all neutralized. `\r` is dropped to prevent overwriting text.
+- **R4.9 sanitizer tests** (Kiro): 19 tests, including Hypothesis properties (no control characters left, idempotent, never raises, output is a subsequence of the input) and a test proving the strategy actually generates C0, DEL, C1, and lone surrogates.
+- **T1.6 (part 2), `run_exec` and placeholder `dispatch`** (me): one-shot exec requests are measured in **bytes** and rejected over 4,096 (R8.6). Output goes through `dispatch`, then the sanitizer, then stdout, and the exit status is passed through. `dispatch` returns `(output, status)`, the same shape the T2.4 command engine will use.
+- **Manual end-to-end test** over real SSH with a throwaway dev script: the 4,096-byte boundary, a multibyte boundary, the exit codes, the sanitizer, and fingerprint-only auth logging.
+
+### Design decisions
+
+- **Allowlist, not blocklist, for terminal output.** Removing every control character except two is the security guarantee; a regex that removes whole sequences would only be cosmetic. Leftover text like `[2J` is visible but can't do anything.
+- **Sanitizing prevents hack-back.** Without it, LLM output or attacker-created file content could write to a visitor's clipboard or terminal, which `product.md`'s guardrail forbids.
+- **Log the size of a rejected command, never its content,** so a huge command can't fill the disk or inject into logs.
+- **Host keys are ignored by pattern (`*host_key*`), not by exact path,** so newly generated keys are protected by default.
+
+### Lessons and surprises
+
+- **A library's default logging bypassed my own logging rule.** My code logs only the byte count of a rejected command, but asyncssh's INFO logging printed every raw command and username. Sending a real OSC sequence through the honeypot changed the **server** terminal's title: log injection (CWE-117) into the admin's terminal. Fix: run the `asyncssh` logger at WARNING (added to T1.10). Only testing with real traffic showed this.
+- **Characters are not bytes.** `len(command)` would have let 2,049 `é` (4,098 bytes) through. asyncssh's `max_line_length` counts characters too, and doesn't apply to exec requests at all.
+- **Security checks can fail silently.** In my drafts: `"CC"` instead of `"Cc"` made the sanitizer a no-op, `"\s"` instead of `"\n"` dropped every newline, and `if MAX_COMMAND_BYTES > 4096` compared the limit to itself, so the check never ran. None of these raise an error, and every one would pass a casual test.
+- **`return` in the middle of a handler hangs the client:** the `write` and `exit` after it never ran.
+- **Windows PowerShell 5.1 doesn't support `` `e``.** My first escape-sequence test sent a plain letter `e`, so it tested nothing. `$([char]27)` works everywhere. Check that a test actually sends what you think it sends.
+- **`python -m package.module`, not a file path,** so imports resolve from the project root.
+
+### Next steps
+
+1. T1.6 (part 3): `run_interactive` (prompt, read loop, resize handling inside the loop, `exit` → `logout`, EOF/break), plus a router that sends shell sessions to `run_interactive` and exec requests to `run_exec`.
+2. Kiro: tests for `run_exec` and the router.
+3. Log a `CONNECTION CLOSED` event in `connection_lost` (needed later for R5 `end_reason`).
+4. T1.10: entry point, config loader, and logging setup.
+5. T2.1–T2.2: the virtual filesystem.
+
+### Status
+
+Shell is about two-thirds done. On track but tight for an early live deployment around Nov 22–24.
