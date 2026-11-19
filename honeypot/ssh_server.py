@@ -126,6 +126,7 @@ async def create_honeypot_server(
     port: int,
     host_key_path: Path,
     process_factory: Callable,
+    login_timeout: float = 15.0,
 ) -> asyncssh.SSHAcceptor:
     return await asyncssh.create_server(
         lambda: HoneypotServer(auth, admission),
@@ -137,7 +138,7 @@ async def create_honeypot_server(
         x11_forwarding=False,
         sftp_factory=None,
         allow_scp=False,
-        login_timeout=15,
+        login_timeout=login_timeout,
         rdns_lookup=False,
         max_line_length=4096,
         server_version="OpenSSH_9.6p1 Ubuntu-3ubuntu13.5",
