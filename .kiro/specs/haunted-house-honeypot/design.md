@@ -108,7 +108,7 @@ Each component lists its **responsibility**, **interface** (main classes and fun
 
 - **Responsibility:** the terminal loop for interactive sessions, and the one-shot path for exec requests.
 - **Interface:**
-  - `run_interactive(process, session)`: prompt, read lines, dispatch to the Command Engine, write results. Catches `TerminalSizeChanged` **inside** the read loop and continues (spike finding); ends on `exit` (prints `logout`), EOF, or `BreakReceived`.
+    - `run_interactive(process, session)`: prompt, read lines, dispatch to the Command Engine, write results. Catches `TerminalSizeChanged` **inside** the read loop and continues (spike finding). On `BreakReceived` (Ctrl+C), prints `^C` and a fresh prompt without ending the session, matching bash; disconnecting a visitor on Ctrl+C would reveal the honeypot. Ends on `exit` (prints `logout`) or EOF.
   - `run_exec(process, session)`: enforces the 4,096-byte limit on the command (R8.6, not covered by asyncssh's `max_line_length`), dispatches once, returns output and exit status.
   - `sanitize_for_terminal(text) -> str`: strips terminal control sequences from untrusted text (LLM output) before writing.
 - **Prompt:** `{username}@{hostname}:{cwd_display}$ ` (`#` for root).
