@@ -282,3 +282,48 @@ SSH layer complete except the shell. Target: early live deployment around Nov 22
 ### Status
 
 Shell is about two-thirds done. On track but tight for an early live deployment around Nov 22–24.
+
+# Devlog — November 18, 2026
+
+### Completed
+
+- **T1.6 shell finished** (me): `run_interactive` and the `handle_process` router join yesterday's `sanitize_for_terminal` and `run_exec`.
+  - The prompt (`root@web-prod-01:~# `, or `$` for non-root users) is built from the logged-in username.
+  - `exit` and EOF (Ctrl+D) both print `logout` and end the session, as real bash does.
+  - An empty line shows the prompt again without dispatching anything.
+  - Lines over 4,096 bytes are rejected with the same message and log entry as exec requests (R8.6).
+  - Output goes through `dispatch`, then `sanitize_for_terminal`, then the terminal (R4.9).
+  - A terminal resize never ends the session (the spike bug), and Ctrl+C prints `^C` and a fresh prompt.
+  - The router sends shell sessions to `run_interactive` and exec requests to `run_exec`.
+- **Refactor:** the byte-limit check moved into one helper, `_is_too_long`, used by both exec and interactive paths. Regression-tested by hand with the same four boundary cases as yesterday.
+- **Shell tests** (Kiro): 18 tests against a real server on port 0, covering exec boundaries (including multibyte from both sides), sanitized output, prompts for root and non-root users, empty lines, `exit`/EOF, Ctrl+C, resize, the interactive byte limit, and logs that record the byte count but never the command.
+- **Manually tested over real SSH:** every interactive behavior above, with the root and admin accounts.
+
+### Design decisions
+
+- **Ctrl+C follows real bash, not the original design.** `design.md` said the session ends on Ctrl+C, but bash just prints `^C` and a new prompt. Disconnecting would tell an attacker something is off. Updated `design.md` §3 to match.
+- **One helper for one rule.** The 4,096-byte limit applies to both exec and interactive input, so it lives in one function. A copied check could be fixed in one place and missed in the other, as almost happened with the characters-vs-bytes bug.
+- **The prompt is written only before a new command is read.** A `show_prompt` flag skips the prompt when `readline()` was only interrupted by a resize.
+
+### Lessons and surprises
+
+- **The terminal hid a bug that the raw bytes showed.** My manual resize test looked clean, but Kiro's test read the raw output and found a second prompt sent after every resize: the resize handler's `continue` jumped back to the line that writes the prompt. The fix was the `show_prompt` flag. I then confirmed the tightened test fails without the fix (2 failures) and passes with it.
+- **The same bug twice in one evening:** `if _is_too_long:` without parentheses tests the function object, which is always truthy, so every command would be rejected. It's the same mistake as printing a function instead of calling it in the spike.
+- **A variable that doesn't exist yet crashes the session immediately.** An early draft computed `byte_count` from `command` before the loop, where neither existed, so every session would have died right after login.
+- **A stray `process.exit()` inside the loop** would have disconnected attackers after their first command, and a `return` in place of `continue` would have skipped `exit` entirely and hung the client.
+- **asyncssh's line editor converts `\n` to `\r\n` on output** (checked in its source), so writing `\r\n` sends `\r\r\n`. Use `\n` everywhere.
+- **Unpacking must match.** Dropping the unused `status` from `output, status = dispatch(...)` would have turned `output` into the whole tuple and crashed the sanitizer. The fix was the `_status` naming convention for a deliberately ignored value.
+- **The ownership guard blocked a git command too:** Kiro tried to check out an old `shell.py` to test against it, and the hook stopped it. The break-it check is mine to run, which is how it should be.
+- **Run ruff before committing,** not after: a commit went out with an unused-variable error and needed a follow-up fix.
+
+### Next steps
+
+1. T1.10: entry point and config loader (with the `asyncssh` logger at WARNING and a startup log line), replacing the dev script.
+2. Log a `CONNECTION CLOSED` event in `connection_lost`.
+3. T1.5a: prune stale rate-limit entries before deployment.
+4. T2.1–T2.2: the virtual filesystem, after which the prompt shows the real current directory.
+5. T2.4: the command engine, replacing the placeholder `dispatch`.
+
+### Status
+
+SSH layer and shell complete and tested. Remaining before the early deployment (Nov 22–24): entry point, VFS, core commands, and the PostgreSQL recorder. Tight but on track.

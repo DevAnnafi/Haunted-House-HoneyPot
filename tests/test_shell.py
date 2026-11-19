@@ -32,6 +32,7 @@ LISTED_PASS = "123456"
 CREDENTIALS_TOML = f'[[credentials]]\nusername = "{LISTED_USER}"\npassword = "{LISTED_PASS}"\n'
 LOOPBACK = "127.0.0.1"
 CLIENT_TIMEOUT = 10.0
+QUIET_WINDOW = 0.5  # seconds of silence that count as "nothing more was sent"
 
 ROOT_PROMPT = "root@web-prod-01:~# "
 DEMO_PROMPT = f"{DEMO_USER}@web-prod-01:~$ "
@@ -290,25 +291,42 @@ async def test_r8_6_eof_prints_logout_and_closes_with_status_0(tmp_path, dispatc
                 process.close()
 
 
-async def test_r8_6_terminal_resize_does_not_end_the_session(tmp_path, dispatch_spy):
+async def read_quiet(process: asyncssh.SSHClientProcess, window: float = QUIET_WINDOW) -> str:
+    """Return whatever the server sends within ``window`` seconds ("" if it stays silent)."""
+    chunks: list[str] = []
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + window
+    while (remaining := deadline - loop.time()) > 0:
+        try:
+            chunks.append(await asyncio.wait_for(process.stdout.read(1024), remaining))
+        except TimeoutError:
+            break
+    return "".join(chunks)
+
+
+@pytest.mark.parametrize("resizes", [1, 3])
+async def test_r8_6_terminal_resize_sends_no_extra_prompt(tmp_path, dispatch_spy, resizes):
     async with running_server(tmp_path) as port:
         async with await connect(port) as conn:
             # A pty is needed for the client to send window-change requests. The pty line
             # editor echoes input and uses CRLF line endings, so read the echo too.
             process = await conn.create_process(term_type="xterm", term_size=(80, 24))
             try:
+                # The one prompt the session is allowed to have sent so far.
                 assert await read_until(process, " ") == ROOT_PROMPT
-                process.change_terminal_size(120, 40)
-                process.change_terminal_size(60, 20)
 
-                # Each resize currently makes the loop print the prompt again, and those
-                # prompts can land before or after the echo. This test only pins what must
-                # hold: apart from prompts, the echo and output of the next command arrive
-                # intact and the session is still alive.
+                for i in range(resizes):
+                    process.change_terminal_size(100 + i, 30 + i)
+                # No input was sent, so nothing more may arrive.
+                assert await read_quiet(process) == ""
+
+                # The session is alive: one command gives its echo, its output, and exactly
+                # one new prompt, and then the server is silent again.
                 process.stdin.write("whoami\r")
-                before_output = await read_until(process, "ran:whoami\r\n")
-                assert before_output.replace(ROOT_PROMPT, "") == "whoami\r\nran:whoami\r\n"
-                assert await read_until(process, " ") == ROOT_PROMPT
+                assert await read_until(process, ROOT_PROMPT) == (
+                    f"whoami\r\nran:whoami\r\n{ROOT_PROMPT}"
+                )
+                assert await read_quiet(process) == ""
                 assert dispatch_spy.calls == ["whoami"]
 
                 process.stdin.write("exit\r")
