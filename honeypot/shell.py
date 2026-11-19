@@ -85,7 +85,7 @@ async def run_interactive(process: asyncssh.SSHServerProcess) -> None:
                     "BYTE LENGTH TOO LONG client_ip=%s byte_count=%d", client_ip, byte_count
                 )
             else:
-                output, status = dispatch(cmd)
+                output, _status = dispatch(cmd)
                 safe_output = sanitize_for_terminal(output)
                 process.stdout.write(safe_output)
 
