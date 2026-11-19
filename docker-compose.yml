@@ -18,6 +18,9 @@ services:
     env_file: .env
     environment:
       # Fixed container-side values; these override anything in .env.
+      # Bind all interfaces inside the container so the published port works. The
+      # host-side exposure is controlled by "ports:" below, not by this address.
+      HONEYPOT_SSH_HOST: "0.0.0.0"
       HONEYPOT_SSH_PORT: "2222"
       HONEYPOT_HOST_KEY_PATH: /run/secrets/ssh_host_key
     volumes:

@@ -1,6 +1,6 @@
 """Tests for honeypot/ssh_server.py (T1.7).
 
-Satisfies R1.1, R1.5, R1.6, R1.9, R1.10, R1.13, R8.2, R8.7 (R8.8 skipped until T1.10).
+Satisfies R1.1, R1.5, R1.6, R1.9, R1.10, R1.13, R8.2, R8.7 R8.8.
 
 All secrets, keys, and credentials here are generated per test or obviously fake.
 No real .env, host key, or config/credentials.toml is read.
@@ -53,7 +53,9 @@ async def echo_process_factory(process: asyncssh.SSHServerProcess) -> None:
 
 @asynccontextmanager
 async def running_server(
-    tmp_path: Path, admission: AdmissionController | None = None
+    tmp_path: Path,
+    admission: AdmissionController | None = None,
+    login_timeout: float = 15.0,
 ) -> AsyncIterator[tuple[int, AdmissionController]]:
     admission = admission if admission is not None else AdmissionController()
     acceptor = await create_honeypot_server(
@@ -63,6 +65,7 @@ async def running_server(
         0,
         write_host_key(tmp_path),
         echo_process_factory,
+        login_timeout=login_timeout,
     )
     try:
         port = acceptor.get_port()
@@ -441,10 +444,17 @@ def test_r1_5_auth_log_messages_are_single_line_for_any_username(module_policy, 
         assert "\x1b" not in message
 
 
-@pytest.mark.skip(
-    reason="R8.8: login_timeout is hard-coded to 15 s in create_honeypot_server; it becomes "
-    "configurable in T1.10, then test that a short timeout closes an idle unauthenticated "
-    "connection."
-)
 async def test_r8_8_setup_timeout_closes_unauthenticated_connection(tmp_path):
-    raise AssertionError("unreachable until T1.10")
+    # Open a TCP connection and never authenticate. The server must close it
+    # once login_timeout (0.5 s here) expires, long before the 15 s default.
+    async with running_server(tmp_path, login_timeout=0.5) as (port, _admission):
+        reader, writer = await asyncio.open_connection(LOOPBACK, port)
+        try:
+            started = asyncio.get_running_loop().time()
+            # read() returns only at EOF; the server sends just its version banner first.
+            await asyncio.wait_for(reader.read(), 5.0)
+            elapsed = asyncio.get_running_loop().time() - started
+            assert reader.at_eof()
+            assert elapsed < 5.0
+        finally:
+            writer.close()
