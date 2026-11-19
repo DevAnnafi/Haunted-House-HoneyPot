@@ -1,0 +1,6 @@
+# Development and CI: runtime dependencies plus test and quality tools.
+-r requirements.txt
+pytest==9.2.0
+pytest-asyncio==1.4.1.post1
+hypothesis==6.170.15
+ruff==0.17.4

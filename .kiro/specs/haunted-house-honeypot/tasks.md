@@ -345,7 +345,7 @@ Satisfies: R8.12.
 ## Infrastructure and Deployment
 
 ### T9.1 — Docker Compose configuration [kiro]
-Write `docker-compose.yml` with three services: `honeypot` (publishes host 22 → container 2222), `api` (internal only), `postgres` (internal only). Define `honeypot_net` and `dashboard_net` networks. Set the honeypot container to run as the unprivileged `honeypot` user. Load secrets from `.env`.
+Write `docker-compose.yml` with three services: `honeypot` (publishes host 22 → container 2222), `api` (internal only), `postgres` (internal only). Define `honeypot_net` and `db_net` networks. Set the honeypot container to run as the unprivileged `honeypot` user. Load secrets from `.env`.
 Satisfies: R1.2, R1.8, tech.md deployment.
 
 ### T9.2 — Windows selector event loop shim [kiro]

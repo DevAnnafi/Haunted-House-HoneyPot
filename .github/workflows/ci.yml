@@ -41,7 +41,9 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
 
       - name: Install PostgreSQL client (psql, needed by tests/test_migration.py)
         run: |
@@ -49,7 +51,7 @@ jobs:
           sudo apt-get install --yes --no-install-recommends postgresql-client
           psql --version
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
       - name: Lint — ruff format check
         run: ruff format --check .

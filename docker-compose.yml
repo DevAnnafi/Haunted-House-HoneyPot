@@ -1,0 +1,87 @@
+# Honeypot + PostgreSQL (T9.1; ADR-0003, ADR-0004).
+# The dashboard API service is added in a later task.
+#
+# Secrets are never written here:
+#   .env          honeypot settings and secrets       (see .env.example)
+#   postgres.env  PostgreSQL superuser password only  (see postgres.env.example)
+# They are separate files so the honeypot container never receives the database
+# superuser password (ADR-0003: each service gets only its own secrets).
+
+name: haunted-house-honeypot
+
+services:
+  honeypot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: haunted-house-honeypot:local
+    env_file: .env
+    environment:
+      # Fixed container-side values; these override anything in .env.
+      HONEYPOT_SSH_PORT: "2222"
+      HONEYPOT_HOST_KEY_PATH: /run/secrets/ssh_host_key
+    volumes:
+      # Host key lives outside the repo; HONEYPOT_HOST_KEY_FILE is the host path
+      # (set in .env, used here only for compose interpolation). Read-only.
+      - type: bind
+        source: ${HONEYPOT_HOST_KEY_FILE:?set HONEYPOT_HOST_KEY_FILE in .env to the host key path outside the repo}
+        target: /run/secrets/ssh_host_key
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      # WARNING: host port 22 is the server's own admin SSH port. Move the host's
+      # sshd to another port (and allow that port in the firewall) BEFORE this goes
+      # live, or you will lock yourself out or fail to bind. For local testing
+      # use e.g. "2222:2222" instead.
+      - "22:2222"
+    networks:
+      - honeypot_net # published SSH port and outbound access to the LLM API
+      - db_net # internal only: reaches PostgreSQL
+    # TODO(T9.6): egress control. Restrict outbound traffic from this container to
+    # PostgreSQL and the LLM API only (host firewall / DOCKER-USER rules, see
+    # design.md section 11). Until then honeypot_net has unrestricted egress.
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: 512m
+
+  postgres:
+    image: postgres:16
+    env_file: postgres.env
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: honeypot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # No "ports:" on purpose. PostgreSQL is reachable only on db_net (ADR-0004).
+    networks:
+      - db_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d honeypot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  honeypot_net:
+    driver: bridge
+  db_net:
+    driver: bridge
+    internal: true # no route to the host or the internet
+
+volumes:
+  postgres_data:

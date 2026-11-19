@@ -1,0 +1,48 @@
+# Keep secrets, keys, caches and VCS data out of the build context and the image.
+
+# Virtual environments
+.venv/
+venv/
+
+# Secrets and environment files (keep the .example templates out too; not needed in the image)
+.env
+.env.*
+*.env
+*.env.example
+secrets/
+
+# SSH host keys
+*host_key*
+*.pem
+*.key
+
+# Version control and tooling
+.git/
+.gitignore
+.github/
+.kiro/
+.idea/
+.vscode/
+
+# Caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Not part of the honeypot image
+dashboard/
+api/
+tests/
+spikes/
+docs/
+scripts/
+migrations/
+docker-compose*.yml
+Dockerfile
+.dockerignore
+*.md

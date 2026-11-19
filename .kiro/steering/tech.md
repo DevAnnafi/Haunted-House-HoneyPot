@@ -92,13 +92,14 @@ haunted-house-honeypot/
 ├── spikes/                throwaway experiments (not production code)
 ├── docker-compose.yml
 ├── requirements.txt
+├── requirements-dev.txt
 └── README.md
 ```
 
 ## Common commands
 
 ```bash
-pip install -r requirements.txt        # install Python dependencies
+pip install -r requirements-dev.txt    # install runtime + dev/test dependencies
 pytest -v                              # run all tests
 ruff format . && ruff check .          # format and lint
 docker compose up --build              # run the full stack locally

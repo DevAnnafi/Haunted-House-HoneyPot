@@ -47,7 +47,7 @@ python -m venv .venv
 # source .venv/bin/activate   # Linux/macOS
 
 # 2. Install Python dependencies
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 # 3. Copy and fill in secrets
 cp .env.example .env          # edit DATABASE_URL, HMAC_SECRET, etc.
@@ -90,6 +90,7 @@ haunted-house-honeypot/
 ├── docker-compose.yml
 ├── pyproject.toml
 ├── requirements.txt
+├── requirements-dev.txt
 └── README.md         ← you are here
 ```
 

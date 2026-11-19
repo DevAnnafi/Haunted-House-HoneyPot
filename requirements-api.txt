@@ -1,0 +1,7 @@
+# Dashboard API service (installed into the API image later). Excludes the honeypot's
+# SSH dependencies. Keep the psycopg pins in step with requirements.txt.
+fastapi==0.162.5
+uvicorn==0.54.0
+pydantic==2.14.3
+psycopg[binary]==3.3.8
+psycopg_pool==3.3.3
