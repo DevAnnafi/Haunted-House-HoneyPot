@@ -56,12 +56,17 @@ async def run_interactive(process: asyncssh.SSHServerProcess) -> None:
     prompt = f"{username}@web-prod-01:~{prompt_char} "
     client_ip = process.get_extra_info("peername")[0]
 
+    show_prompt = True
+
     while True:
-        process.stdout.write(prompt)
+        if show_prompt:
+            process.stdout.write(prompt)
 
         try:
             # Read one line
             line = await process.stdin.readline()
+
+            show_prompt = True
 
             # End the session at EOF
             if not line:
@@ -90,9 +95,11 @@ async def run_interactive(process: asyncssh.SSHServerProcess) -> None:
                 process.stdout.write(safe_output)
 
         except asyncssh.TerminalSizeChanged:
+            show_prompt = False
             continue
 
         except asyncssh.BreakReceived:
+            show_prompt = True
             process.stdout.write("^C\n")
             continue
 
