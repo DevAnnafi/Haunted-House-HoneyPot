@@ -327,3 +327,54 @@ Shell is about two-thirds done. On track but tight for an early live deployment 
 ### Status
 
 SSH layer and shell complete and tested. Remaining before the early deployment (Nov 22–24): entry point, VFS, core commands, and the PostgreSQL recorder. Tight but on track.
+
+# Devlog — November 19–20, 2026
+
+### Completed
+
+- **T1.10 entry point and config** (me): `python -m honeypot` now starts the real service.
+  - `honeypot/config.py` holds a frozen `Config` dataclass, loaded by `load_config_from_env()`. Only values that are in use today are required (the host key path, plus the HMAC secret and demo login from `auth.py`). The rest have safe defaults: `127.0.0.1:2222`, a 15-second setup timeout, and `config/credentials.toml`.
+  - Bad values fail closed with `ConfigurationError`: missing or nonexistent host key, non-integer or out-of-range port, a timeout that's zero, negative, `nan`, or `inf`, and a missing credentials file.
+  - `honeypot/__main__.py` loads `.env` (the only place that does), sets the `asyncssh` logger to WARNING (the log-injection fix from T1.6), loads config before starting the event loop so a bad value prints one `CONFIG ERROR` line and exits with code 1, logs a startup line, and uses a selector event loop on Windows through `asyncio.run(..., loop_factory=...)`.
+  - `create_honeypot_server` takes a configurable `login_timeout`, which let the R8.8 setup-timeout test run for the first time (with a 0.5-second timeout).
+  - The throwaway `scripts/dev_exec.py` is gone.
+- **T9.1 Docker** (Kiro): a hardened honeypot container (non-root user, read-only root filesystem, `cap_drop: ALL`, `no-new-privileges`, resource limits), Postgres 16 on an internal-only network with no published ports, the host key mounted read-only from outside the repo, and no secrets in the image.
+- **Requirements split:** `requirements.txt` (runtime only), `requirements-dev.txt` (adds pytest, Hypothesis, ruff), and `requirements-api.txt` (for the future API image). The honeypot image no longer ships test tools.
+- **T2.1 virtual filesystem, read side** (me):
+  - `normalize_path(cwd, path)` turns any attacker path into one clean absolute path inside the virtual root, using a stack (LeetCode 71). It never uses `os.path` or `pathlib`, which would bring in Windows separators and the host filesystem.
+  - `Node` is a dataclass with `children` from `field(default_factory=dict)`, so no two nodes share a dictionary.
+  - `VirtualFS.resolve(cwd, path)` walks the tree one name at a time and returns `None` for missing names or paths that go through a file.
+  - `load_template()` builds the tree from `config/fs_template.toml`: it sorts entries by depth so parents come first, parses `mode` as octal and `mtime` as a timezone-aware `datetime`, and lets the template's `/` entry set the root's own metadata.
+- **VFS tests** (Kiro): 41 tests, including R2.12 property tests over random paths full of `..`, `.`, `//`, and backslashes; every rejected template case; and an R2.10 test proving that two copies of the loaded tree share no nodes.
+
+### Design decisions
+
+- **Secure defaults:** the server listens on `127.0.0.1` unless told otherwise. Docker sets `0.0.0.0` explicitly, so exposing a fake root shell to the network is always a deliberate choice.
+- **Require configuration only when a feature uses it,** and fail closed on anything invalid. `HONEYPOT_DATABASE_URL` becomes required with the recorder (T5.2).
+- **Keep the Postgres superuser password out of the honeypot's environment** (a separate `postgres.env`), so a compromised honeypot can't take over the database. This was Kiro's catch, and it follows ADR-0003.
+- **Parse at the boundary:** the template's `"0644"` and ISO timestamps are converted to an `int` and a `datetime` once, at load time, so the rest of the code works with clean values.
+- **Per-session copies** with `copy.deepcopy` of a tree loaded once at startup (R2.10).
+
+### Lessons and surprises
+
+- **One `and` almost broke the path-traversal guarantee.** My draft had `elif part == ".." and stack:`. With an empty stack, the condition was false, so `..` fell through to `else` and was pushed: `normalize_path("/", "..")` would have returned `"/.."`, above the virtual root. The fix was to match every `..` in its own branch and check the stack inside it. A single test case, `("/", "..")`, catches it.
+- **`list.pop()` takes a position, not a value.** `stack.pop(part)` raises `TypeError`.
+- **Fail-closed validation found a real gap.** The loader rejected the template's `/` entry. That entry wasn't a mistake; it describes the root, so the loader now uses it to set the root's metadata instead of discarding it.
+- **Wrong-type values need their own handling.** `int(644, 8)` (a number instead of a string) raises `TypeError`, not `ValueError`, and `int("-644", 8)` returns a negative mode. Both are caught now.
+- **`float("nan")` slips past `<= 0`** because every comparison with NaN is false. `math.isfinite` closes that gap.
+- **Python imports a module only once per shell session,** so a REPL opened before an edit keeps the old code. Restart the shell after changing a module.
+- **The indentation-inside-a-class bug happened again:** `load_template` became a method of `VirtualFS`. `Select-String -Pattern "^def |^class |    def "` shows the real indentation on disk in one line.
+- **Run `ruff check .` before pushing.** CI failed on unsorted imports, a duplicate `datetime` import, and the newer `datetime.UTC` spelling, all fixable in one `ruff check --fix`.
+- **A test that failed only in Kiro's terminal:** the entry-point subprocess test raised `WinError 6` there (no valid console handle to inherit) but passes in my terminal and in CI.
+
+### Next steps
+
+1. T2.2: VFS write operations (`mkdir`, write, `rm`, `cp`, `mv`), each checking every limit before changing anything (R2.9).
+2. T2.4: the parser and command engine, starting with `ls`, `cd`, `pwd`, `cat`, `whoami`, `uname`, `id`, and "command not found".
+3. Log a `CONNECTION CLOSED` event in `connection_lost`.
+4. T1.5a: prune stale rate-limit entries before deployment.
+5. T9.6: egress restriction, which must be done before going live.
+
+### Status
+
+Caught up after being about a day behind: the entry point, Docker, and the VFS read side are done and tested. Remaining before the early deployment (Nov 22–24): VFS writes, core commands, the recorder, and egress restriction.
