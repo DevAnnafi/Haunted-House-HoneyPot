@@ -1,8 +1,6 @@
-from dataclasses import dataclass, field
-from datetime import datetime
-
 import tomllib
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from honeypot.auth import ConfigurationError
@@ -67,7 +65,7 @@ def load_template(path: Path) -> Node:
     with path.open("rb") as f:
         data = tomllib.load(f)
 
-    root = Node("", "dir", 0o755, "root", "root", datetime(2024, 1, 1, tzinfo=timezone.utc))
+    root = Node("", "dir", 0o755, "root", "root", datetime(2024, 1, 1, tzinfo=UTC))
     vfs = VirtualFS(root)
     root_seen = False
 
