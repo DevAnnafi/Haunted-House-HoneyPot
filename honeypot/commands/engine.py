@@ -34,6 +34,7 @@ def cmd_whoami(ctx: Context, args: list[str], stdin: str) -> CommandResult:
 def cmd_echo(ctx: Context, args: list[str], stdin: str) -> CommandResult:
     return CommandResult(stdout=" ".join(args) + "\n")
 
+
 def cmd_cd(ctx: Context, args: list[str], _stdin: str) -> CommandResult:
     home = "/root" if ctx.username == "root" else f"/home/{ctx.username}"
     target = args[0] if args else home
@@ -83,5 +84,3 @@ def execute(ctx: Context, line: str) -> CommandResult:
         stdin = last.stdout  # this stage's output feeds the next stage
 
     return last
-
-
