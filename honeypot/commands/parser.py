@@ -66,7 +66,7 @@ def parse(line: str) -> Pipeline | ParseError:
     # 4. Split on "|" into groups of tokens, one group per stage.
     groups: list[list[str]] = [[]]
     for token in tokens:
-        if token == "|":
+        if token == "|":  # noqa: S105 - parser token, not a credential
             groups.append([])
         else:
             groups[-1].append(token)
