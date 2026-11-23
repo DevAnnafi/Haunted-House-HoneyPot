@@ -101,6 +101,9 @@ Implement `parse` and `execute` in `honeypot/commands/` with `Pipeline`, `Comman
 - `ls -l`: pad the owner, group and size columns to the widest entry, like GNU `ls` (currently a longer group name such as `shadow` shifts the size column).
 - `ls -l`: show the year instead of the time for files older than six months.
 - `ls` without `-l`: names print on one line; real `ls` arranges them in columns to fit the terminal width.
+- `cat - -`: real `cat` reads stdin once; the second `-` adds nothing (currently the input repeats).
+- `cat -- file`: `--` should end option parsing instead of being treated as a filename.
+- `--help` and `--version`: print help or version text instead of "unrecognized option".
 Satisfies: R2.1, R2.6, R2.7, R2.8, R2.9, R2.13.
 
 ### T2.5 — Command handlers: navigation and inspection (pwd, cd, ls, cat, echo) [dev]
