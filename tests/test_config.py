@@ -15,6 +15,7 @@ import pytest
 from honeypot.auth import ConfigurationError
 from honeypot.config import (
     DEFAULT_CREDENTIALS_PATH,
+    DEFAULT_FS_TEMPLATE_PATH,
     DEFAULT_LOGIN_TIMEOUT,
     DEFAULT_SSH_HOST,
     DEFAULT_SSH_PORT,
@@ -29,6 +30,7 @@ CONFIG_VARS = (
     "HONEYPOT_HOST_KEY_PATH",
     "HONEYPOT_SETUP_TIMEOUT",
     "HONEYPOT_CREDENTIALS_PATH",
+    "HONEYPOT_FS_TEMPLATE_PATH",
 )
 
 
@@ -53,13 +55,28 @@ def credentials(tmp_path: Path) -> Path:
     return path
 
 
+FS_TEMPLATE_TEXT = (
+    '[[node]]\npath = "/"\ntype = "dir"\nmode = "0755"\nowner = "root"\ngroup = "root"\n'
+    'mtime = "2026-03-12T09:41:07Z"\n'
+)
+
+
+@pytest.fixture
+def fs_template(tmp_path: Path) -> Path:
+    # Config loading only checks that the file exists; it never parses it.
+    path = tmp_path / "fs_template.toml"
+    path.write_text(FS_TEMPLATE_TEXT)
+    return path
+
+
 @pytest.fixture
 def valid_env(
-    monkeypatch: pytest.MonkeyPatch, host_key: Path, credentials: Path
+    monkeypatch: pytest.MonkeyPatch, host_key: Path, credentials: Path, fs_template: Path
 ) -> pytest.MonkeyPatch:
-    """Environment with the two required file paths set to real files."""
+    """Environment with the three required file paths set to real files."""
     monkeypatch.setenv("HONEYPOT_HOST_KEY_PATH", str(host_key))
     monkeypatch.setenv("HONEYPOT_CREDENTIALS_PATH", str(credentials))
+    monkeypatch.setenv("HONEYPOT_FS_TEMPLATE_PATH", str(fs_template))
     return monkeypatch
 
 
@@ -167,6 +184,47 @@ def test_r1_credentials_file_that_does_not_exist_is_rejected(valid_env, tmp_path
 
 
 # ---------------------------------------------------------------------------
+# Filesystem template
+# ---------------------------------------------------------------------------
+
+
+def test_r1_fs_template_that_does_not_exist_is_rejected(valid_env, tmp_path):
+    missing = tmp_path / "no_such_template.toml"
+    valid_env.setenv("HONEYPOT_FS_TEMPLATE_PATH", str(missing))
+    with pytest.raises(ConfigurationError) as exc:
+        load_config_from_env()
+    assert str(exc.value) == f"filesystem template not found: {missing}"
+
+
+def test_r1_fs_template_path_to_directory_is_rejected(valid_env, tmp_path):
+    valid_env.setenv("HONEYPOT_FS_TEMPLATE_PATH", str(tmp_path))
+    with pytest.raises(ConfigurationError) as exc:
+        load_config_from_env()
+    assert str(exc.value) == f"filesystem template not found: {tmp_path}"
+
+
+def test_r1_missing_default_fs_template_is_rejected(valid_env, monkeypatch, tmp_path):
+    # No override, and the relative default does not exist under the working directory.
+    valid_env.delenv("HONEYPOT_FS_TEMPLATE_PATH")
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ConfigurationError) as exc:
+        load_config_from_env()
+    assert str(exc.value) == f"filesystem template not found: {Path(DEFAULT_FS_TEMPLATE_PATH)}"
+
+
+def test_r1_empty_fs_template_path_falls_back_to_the_default(valid_env, monkeypatch, tmp_path):
+    valid_env.setenv("HONEYPOT_FS_TEMPLATE_PATH", "")
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ConfigurationError) as exc:
+        load_config_from_env()
+    assert str(exc.value) == f"filesystem template not found: {Path(DEFAULT_FS_TEMPLATE_PATH)}"
+
+
+def test_r1_fs_template_path_override_is_used(valid_env, fs_template):
+    assert load_config_from_env().fs_template_path == fs_template
+
+
+# ---------------------------------------------------------------------------
 # Defaults and empty values
 # ---------------------------------------------------------------------------
 
@@ -177,18 +235,22 @@ def test_r1_defaults_are_loopback_2222_and_15_seconds():
     assert DEFAULT_SSH_PORT == 2222
     assert DEFAULT_LOGIN_TIMEOUT == 15.0
     assert DEFAULT_CREDENTIALS_PATH == "config/credentials.toml"
+    assert DEFAULT_FS_TEMPLATE_PATH == "config/fs_template.toml"
 
 
-def _chdir_with_default_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Make the relative default credentials path resolve to a file inside tmp_path."""
-    default = tmp_path / DEFAULT_CREDENTIALS_PATH
-    default.parent.mkdir(parents=True)
-    default.write_text('[[credentials]]\nusername = "root"\npassword = "123456"\n')
+def _chdir_with_default_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Make the relative default credentials and template paths resolve inside tmp_path."""
+    credentials = tmp_path / DEFAULT_CREDENTIALS_PATH
+    credentials.parent.mkdir(parents=True)
+    credentials.write_text('[[credentials]]\nusername = "root"\npassword = "123456"\n')
+    template = tmp_path / DEFAULT_FS_TEMPLATE_PATH
+    template.parent.mkdir(parents=True, exist_ok=True)
+    template.write_text(FS_TEMPLATE_TEXT)
     monkeypatch.chdir(tmp_path)
 
 
 def test_r1_unset_optional_values_use_defaults(monkeypatch, tmp_path, host_key):
-    _chdir_with_default_credentials(monkeypatch, tmp_path)
+    _chdir_with_default_files(monkeypatch, tmp_path)
     monkeypatch.setenv("HONEYPOT_HOST_KEY_PATH", str(host_key))
 
     config = load_config_from_env()
@@ -197,17 +259,19 @@ def test_r1_unset_optional_values_use_defaults(monkeypatch, tmp_path, host_key):
     assert config.ssh_port == 2222
     assert config.login_timeout == 15.0
     assert config.credentials_path == Path(DEFAULT_CREDENTIALS_PATH)
+    assert config.fs_template_path == Path(DEFAULT_FS_TEMPLATE_PATH)
     assert config.host_key_path == host_key
 
 
 def test_r1_empty_optional_values_fall_back_to_defaults(monkeypatch, tmp_path, host_key):
-    _chdir_with_default_credentials(monkeypatch, tmp_path)
+    _chdir_with_default_files(monkeypatch, tmp_path)
     monkeypatch.setenv("HONEYPOT_HOST_KEY_PATH", str(host_key))
     for name in (
         "HONEYPOT_SSH_HOST",
         "HONEYPOT_SSH_PORT",
         "HONEYPOT_SETUP_TIMEOUT",
         "HONEYPOT_CREDENTIALS_PATH",
+        "HONEYPOT_FS_TEMPLATE_PATH",
     ):
         monkeypatch.setenv(name, "")
 
@@ -217,6 +281,7 @@ def test_r1_empty_optional_values_fall_back_to_defaults(monkeypatch, tmp_path, h
     assert config.ssh_port == 2222
     assert config.login_timeout == 15.0
     assert config.credentials_path == Path(DEFAULT_CREDENTIALS_PATH)
+    assert config.fs_template_path == Path(DEFAULT_FS_TEMPLATE_PATH)
 
 
 def test_r1_explicit_values_override_defaults(valid_env, host_key, credentials):

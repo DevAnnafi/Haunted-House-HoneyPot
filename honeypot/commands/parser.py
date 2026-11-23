@@ -37,7 +37,9 @@ def _syntax_error(token: str) -> ParseError:
 def parse(line: str) -> Pipeline | ParseError:
     # 1. Tokenize. shlex only splits text; it never runs anything.
     try:
-        tokens = list(shlex.shlex(line, posix=True, punctuation_chars=True))
+        lex = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True  # split words only on spaces, like bash
+        tokens = list(lex)
     except ValueError:
         quote = '"' if line.count('"') % 2 else "'"
         return ParseError(f"-bash: unexpected EOF while looking for matching `{quote}'")

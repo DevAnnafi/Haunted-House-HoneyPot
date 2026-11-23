@@ -162,6 +162,28 @@ def test_r2_5_quoted_redirect_target() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "word",
+    ["a@b", "x:y", "[1]", "$HOME", "\u20ac\u20ac", "a=b", "~/x", "http://1.2.3.4:80/x.sh"],
+)
+def test_r2_5_word_with_non_alphanumeric_characters_stays_one_token(word: str) -> None:
+    # Regression: the tokenizer once split these on characters outside shlex's word set.
+    assert parse(f"echo {word}") == Pipeline([CommandCall("echo", [word])], None)
+    assert parse(f"{word} x") == Pipeline([CommandCall(word, ["x"])], None)
+
+
+def test_r2_5_pipe_and_redirect_still_split_words_without_spaces() -> None:
+    assert parse("echo hi|wc -l>out") == Pipeline(
+        [CommandCall("echo", ["hi"]), CommandCall("wc", ["-l"])], Redirect(">", "out")
+    )
+
+
+def test_r2_5_unspaced_pipe_and_append_split_around_special_words() -> None:
+    assert parse("cat a@b|grep x:y>>~/out") == Pipeline(
+        [CommandCall("cat", ["a@b"]), CommandCall("grep", ["x:y"])], Redirect(">>", "~/out")
+    )
+
+
 # --- R2.5 error cases: pipelines and redirects ------------------------------
 
 
@@ -277,7 +299,23 @@ def test_r2_7_subshell_parens() -> None:
 
 
 def test_r2_7_backticks() -> None:
-    assert parse("echo `id`") == _syntax("`")
+    assert parse("echo `id`") == _syntax("`id`")
+
+
+@pytest.mark.parametrize(
+    ("line", "token"),
+    [
+        ("echo `id`", "`id`"),
+        ("echo `id", "`id"),
+        ("echo id`", "id`"),
+        ("echo `", "`"),
+        ("echo a`id`b", "a`id`b"),
+        ("`id`", "`id`"),
+        ("echo hi | `id`", "`id`"),
+    ],
+)
+def test_r2_7_every_backtick_form_is_rejected_with_the_whole_token(line: str, token: str) -> None:
+    assert parse(line) == _syntax(token)
 
 
 def test_r2_7_backticks_inside_double_quotes() -> None:

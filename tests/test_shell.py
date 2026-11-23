@@ -12,6 +12,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from functools import partial
 from pathlib import Path
 
 import asyncssh
@@ -19,9 +20,11 @@ import pytest
 
 from honeypot import shell
 from honeypot.auth import AuthPolicy
+from honeypot.commands.engine import CommandResult, Context
 from honeypot.limits import AdmissionController
 from honeypot.shell import MAX_COMMAND_BYTES, handle_process
 from honeypot.ssh_server import create_honeypot_server
+from honeypot.vfs import load_template
 
 # Obviously fake test-only values.
 FAKE_SECRET_HEX = "deadbeef" * 8
@@ -35,11 +38,21 @@ CLIENT_TIMEOUT = 10.0
 QUIET_WINDOW = 0.5  # seconds of silence that count as "nothing more was sent"
 
 ROOT_PROMPT = "root@web-prod-01:~# "
-DEMO_PROMPT = f"{DEMO_USER}@web-prod-01:~$ "
+# The template has no /home/demo-user, so the session falls back to "/" and the prompt shows it.
+DEMO_PROMPT = f"{DEMO_USER}@web-prod-01:/$ "
 TOO_LONG_MESSAGE = "-bash: command too long\n"
 
 # Marker that must never appear in logs. Padded to the wanted size by the helpers below.
 SECRET_MARKER = "SECRET-COMMAND-TEXT"
+
+# The real fake-filesystem template. handle_process deep-copies it per session, so one
+# shared instance is safe across tests.
+BASE_ROOT = load_template(Path("config/fs_template.toml"))
+PROCESS_FACTORY = partial(handle_process, base_root=BASE_ROOT)
+
+
+def root_prompt(cwd_display: str) -> str:
+    return f"root@web-prod-01:{cwd_display}# "
 
 
 def make_policy(directory: Path) -> AuthPolicy:
@@ -63,7 +76,7 @@ async def running_server(tmp_path: Path) -> AsyncIterator[int]:
         LOOPBACK,
         0,
         write_host_key(tmp_path),
-        handle_process,
+        PROCESS_FACTORY,
     )
     try:
         yield acceptor.get_port()
@@ -107,21 +120,21 @@ def padded_command(total_bytes: int) -> str:
     return prefix + "a" * (total_bytes - len(prefix))
 
 
-class DispatchSpy:
-    """Replaces shell.dispatch to record which commands reach the (simulated) command engine."""
+class ExecuteSpy:
+    """Replaces shell.execute to record which lines reach the command engine."""
 
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def __call__(self, command: str) -> tuple[str, int]:
-        self.calls.append(command)
-        return (f"ran:{command}\n", 0)
+    def __call__(self, ctx: Context, line: str) -> CommandResult:
+        self.calls.append(line)
+        return CommandResult(stdout=f"ran:{line}\n")
 
 
 @pytest.fixture
-def dispatch_spy(monkeypatch: pytest.MonkeyPatch) -> DispatchSpy:
-    spy = DispatchSpy()
-    monkeypatch.setattr(shell, "dispatch", spy)
+def execute_spy(monkeypatch: pytest.MonkeyPatch) -> ExecuteSpy:
+    spy = ExecuteSpy()
+    monkeypatch.setattr(shell, "execute", spy)
     return spy
 
 
@@ -138,7 +151,7 @@ async def test_r1_9_exec_echo_returns_output_with_exit_status_0(tmp_path):
     async with running_server(tmp_path) as port:
         async with await connect(port) as conn:
             result = await asyncio.wait_for(conn.run("echo hello", check=False), CLIENT_TIMEOUT)
-            assert result.stdout == "echo hello\n"
+            assert result.stdout == "hello\n"
             assert result.stderr == ""
             assert result.exit_status == 0
 
@@ -149,7 +162,7 @@ async def test_r1_9_exec_command_of_exactly_4096_bytes_is_accepted(tmp_path):
     async with running_server(tmp_path) as port:
         async with await connect(port) as conn:
             result = await asyncio.wait_for(conn.run(command, check=False), CLIENT_TIMEOUT)
-            assert result.stdout == f"{command}\n"
+            assert result.stdout == f"{command.removeprefix('echo ')}\n"
             assert result.stderr == ""
             assert result.exit_status == 0
 
@@ -185,12 +198,19 @@ async def test_r1_9_exec_multibyte_command_of_exactly_4096_bytes_is_accepted(tmp
     async with running_server(tmp_path) as port:
         async with await connect(port) as conn:
             result = await asyncio.wait_for(conn.run(command, check=False), CLIENT_TIMEOUT)
-            assert result.stdout == f"{command}\n"
-            assert result.exit_status == 0
+            # Accepted, not rejected: the engine ran it and found no such command (127), not
+            # the oversize error (exit 1). The exact name is not asserted because the parser
+            # splits "\u20ac" into one token per character.
+            assert result.stdout == ""
+            assert result.stderr.startswith("-bash: ")
+            assert result.stderr.endswith(": command not found\n")
+            assert result.stderr != TOO_LONG_MESSAGE
+            assert result.exit_status == 127
 
 
-async def test_r4_9_exec_output_has_no_escape_character(tmp_path):
-    # dispatch echoes the command, so the ESC byte reaches the sanitizer.
+async def test_r4_9_exec_output_has_no_escape_character(tmp_path, execute_spy):
+    # The spy echoes the line back, so the ESC and BEL bytes reach the sanitizer without
+    # depending on how the parser tokenizes them.
     async with running_server(tmp_path) as port:
         async with await connect(port) as conn:
             result = await asyncio.wait_for(
@@ -198,7 +218,7 @@ async def test_r4_9_exec_output_has_no_escape_character(tmp_path):
             )
             assert "\x1b" not in result.stdout
             assert "\x07" not in result.stdout
-            assert result.stdout == "echo [31mred]0;title\n"
+            assert result.stdout == "ran:echo [31mred]0;title\n"
             assert result.exit_status == 0
 
 
@@ -236,7 +256,7 @@ async def test_r8_6_non_root_prompt_ends_in_dollar(tmp_path):
                 process.close()
 
 
-async def test_r8_6_empty_line_dispatches_nothing(tmp_path, dispatch_spy):
+async def test_r8_6_empty_line_executes_nothing(tmp_path, execute_spy):
     async with running_server(tmp_path) as port:
         async with await connect(port) as conn:
             process = await conn.create_process()
@@ -247,12 +267,12 @@ async def test_r8_6_empty_line_dispatches_nothing(tmp_path, dispatch_spy):
                 assert await read_until(process, " ") == ROOT_PROMPT
                 process.stdin.write("   \t \n")
                 assert await read_until(process, " ") == ROOT_PROMPT
-                assert dispatch_spy.calls == []
+                assert execute_spy.calls == []
 
-                # A real command does reach dispatch, so the spy is wired up.
+                # A real command does reach execute, so the spy is wired up.
                 process.stdin.write("whoami\n")
                 assert await read_until(process, " ") == f"ran:whoami\n{ROOT_PROMPT}"
-                assert dispatch_spy.calls == ["whoami"]
+                assert execute_spy.calls == ["whoami"]
 
                 process.stdin.write("exit\n")
                 result = await finish(process)
@@ -261,7 +281,7 @@ async def test_r8_6_empty_line_dispatches_nothing(tmp_path, dispatch_spy):
                 process.close()
 
 
-async def test_r8_6_exit_prints_logout_and_closes_with_status_0(tmp_path, dispatch_spy):
+async def test_r8_6_exit_prints_logout_and_closes_with_status_0(tmp_path, execute_spy):
     async with running_server(tmp_path) as port:
         async with await connect(port) as conn:
             process = await conn.create_process()
@@ -271,12 +291,12 @@ async def test_r8_6_exit_prints_logout_and_closes_with_status_0(tmp_path, dispat
                 result = await finish(process)
                 assert result.stdout == "logout\n"
                 assert result.exit_status == 0
-                assert dispatch_spy.calls == []
+                assert execute_spy.calls == []
             finally:
                 process.close()
 
 
-async def test_r8_6_eof_prints_logout_and_closes_with_status_0(tmp_path, dispatch_spy):
+async def test_r8_6_eof_prints_logout_and_closes_with_status_0(tmp_path, execute_spy):
     async with running_server(tmp_path) as port:
         async with await connect(port) as conn:
             process = await conn.create_process()
@@ -286,7 +306,7 @@ async def test_r8_6_eof_prints_logout_and_closes_with_status_0(tmp_path, dispatc
                 result = await finish(process)
                 assert result.stdout == "logout\n"
                 assert result.exit_status == 0
-                assert dispatch_spy.calls == []
+                assert execute_spy.calls == []
             finally:
                 process.close()
 
@@ -305,7 +325,7 @@ async def read_quiet(process: asyncssh.SSHClientProcess, window: float = QUIET_W
 
 
 @pytest.mark.parametrize("resizes", [1, 3])
-async def test_r8_6_terminal_resize_sends_no_extra_prompt(tmp_path, dispatch_spy, resizes):
+async def test_r8_6_terminal_resize_sends_no_extra_prompt(tmp_path, execute_spy, resizes):
     async with running_server(tmp_path) as port:
         async with await connect(port) as conn:
             # A pty is needed for the client to send window-change requests. The pty line
@@ -327,7 +347,7 @@ async def test_r8_6_terminal_resize_sends_no_extra_prompt(tmp_path, dispatch_spy
                     f"whoami\r\nran:whoami\r\n{ROOT_PROMPT}"
                 )
                 assert await read_quiet(process) == ""
-                assert dispatch_spy.calls == ["whoami"]
+                assert execute_spy.calls == ["whoami"]
 
                 process.stdin.write("exit\r")
                 result = await finish(process)
@@ -337,7 +357,7 @@ async def test_r8_6_terminal_resize_sends_no_extra_prompt(tmp_path, dispatch_spy
                 process.close()
 
 
-async def test_r8_6_ctrl_c_prints_caret_c_and_keeps_session_open(tmp_path, dispatch_spy):
+async def test_r8_6_ctrl_c_prints_caret_c_and_keeps_session_open(tmp_path, execute_spy):
     async with running_server(tmp_path) as port:
         async with await connect(port) as conn:
             process = await conn.create_process()
@@ -347,10 +367,10 @@ async def test_r8_6_ctrl_c_prints_caret_c_and_keeps_session_open(tmp_path, dispa
                 process.send_break(100)
                 assert await read_until(process, " ") == f"^C\n{ROOT_PROMPT}"
 
-                # Still alive: a command still dispatches and the prompt comes back.
+                # Still alive: a command still executes and the prompt comes back.
                 process.stdin.write("whoami\n")
                 assert await read_until(process, " ") == f"ran:whoami\n{ROOT_PROMPT}"
-                assert dispatch_spy.calls == ["whoami"]
+                assert execute_spy.calls == ["whoami"]
 
                 process.stdin.write("exit\n")
                 result = await finish(process)
@@ -360,7 +380,7 @@ async def test_r8_6_ctrl_c_prints_caret_c_and_keeps_session_open(tmp_path, dispa
 
 
 async def test_r8_6_interactive_line_over_4096_bytes_is_rejected_and_session_continues(
-    tmp_path, dispatch_spy
+    tmp_path, execute_spy
 ):
     command = padded_command(MAX_COMMAND_BYTES + 1)
     async with running_server(tmp_path) as port:
@@ -371,12 +391,12 @@ async def test_r8_6_interactive_line_over_4096_bytes_is_rejected_and_session_con
 
                 process.stdin.write(command + "\n")
                 assert await read_until(process, ROOT_PROMPT) == f"{TOO_LONG_MESSAGE}{ROOT_PROMPT}"
-                assert dispatch_spy.calls == []
+                assert execute_spy.calls == []
 
                 # Session continues: a normal command works afterwards.
                 process.stdin.write("whoami\n")
                 assert await read_until(process, " ") == f"ran:whoami\n{ROOT_PROMPT}"
-                assert dispatch_spy.calls == ["whoami"]
+                assert execute_spy.calls == ["whoami"]
 
                 process.stdin.write("exit\n")
                 result = await finish(process)
@@ -385,7 +405,7 @@ async def test_r8_6_interactive_line_over_4096_bytes_is_rejected_and_session_con
                 process.close()
 
 
-async def test_r8_6_interactive_line_of_exactly_4096_bytes_is_accepted(tmp_path, dispatch_spy):
+async def test_r8_6_interactive_line_of_exactly_4096_bytes_is_accepted(tmp_path, execute_spy):
     command = padded_command(MAX_COMMAND_BYTES)
     async with running_server(tmp_path) as port:
         async with await connect(port) as conn:
@@ -394,7 +414,7 @@ async def test_r8_6_interactive_line_of_exactly_4096_bytes_is_accepted(tmp_path,
                 assert await read_until(process, " ") == ROOT_PROMPT
                 process.stdin.write(command + "\n")
                 assert await read_until(process, ROOT_PROMPT) == f"ran:{command}\n{ROOT_PROMPT}"
-                assert dispatch_spy.calls == [command]
+                assert execute_spy.calls == [command]
                 process.stdin.write("exit\n")
                 result = await finish(process)
                 assert result.exit_status == 0
@@ -463,3 +483,169 @@ def assert_command_not_logged(caplog: pytest.LogCaptureFixture) -> None:
         assert SECRET_MARKER not in record.getMessage()
         assert SECRET_MARKER not in repr(record.args)
         assert SECRET_MARKER not in repr(record.msg)
+
+
+# ---------------------------------------------------------------------------
+# Stdout/stderr routing, prompt, and per-session cwd (real command engine)
+# ---------------------------------------------------------------------------
+
+NOT_FOUND = "-bash: nosuchcmd: command not found\n"
+
+
+async def test_r8_6_exec_keeps_stderr_separate_from_stdout(tmp_path):
+    async with running_server(tmp_path) as port:
+        async with await connect(port) as conn:
+            result = await asyncio.wait_for(conn.run("nosuchcmd", check=False), CLIENT_TIMEOUT)
+            assert result.stdout == ""
+            assert result.stderr == NOT_FOUND
+            assert result.exit_status == 127
+
+
+@pytest.mark.parametrize(
+    ("pty_options", "eol", "echoed_input"),
+    [
+        pytest.param({}, "\n", "", id="no-pty"),
+        pytest.param(
+            {"term_type": "xterm", "term_size": (80, 24)}, "\r\n", "nosuchcmd\r\n", id="pty"
+        ),
+    ],
+)
+async def test_r8_6_interactive_writes_command_stderr_to_stdout(
+    tmp_path, pty_options, eol, echoed_input
+):
+    async with running_server(tmp_path) as port:
+        async with await connect(port) as conn:
+            process = await conn.create_process(**pty_options)
+            try:
+                assert await read_until(process, " ") == ROOT_PROMPT
+                process.stdin.write("nosuchcmd" + ("\r" if pty_options else "\n"))
+                expected_error = NOT_FOUND.replace("\n", eol)
+                assert await read_until(process, ROOT_PROMPT) == (
+                    f"{echoed_input}{expected_error}{ROOT_PROMPT}"
+                )
+                process.stdin.write("exit" + ("\r" if pty_options else "\n"))
+                result = await finish(process)
+                # Nothing was sent on the separate stderr stream.
+                assert result.stderr == ""
+                assert result.exit_status == 0
+            finally:
+                process.close()
+
+
+async def run_lines(process: asyncssh.SSHClientProcess, line: str, prompt: str) -> str:
+    """Send one line, return everything up to and including the next ``prompt``."""
+    process.stdin.write(line + "\n")
+    return await read_until(process, prompt)
+
+
+async def test_r8_6_prompt_shows_tilde_at_home_and_full_path_elsewhere(tmp_path):
+    async with running_server(tmp_path) as port:
+        async with await connect(port) as conn:
+            process = await conn.create_process()
+            try:
+                assert await read_until(process, " ") == root_prompt("~")
+
+                assert await run_lines(process, "cd /etc", root_prompt("/etc")) == (
+                    root_prompt("/etc")
+                )
+                assert await run_lines(process, "cd /var/log", root_prompt("/var/log")) == (
+                    root_prompt("/var/log")
+                )
+                # A bare cd returns home.
+                assert await run_lines(process, "cd", root_prompt("~")) == root_prompt("~")
+                # Below home the prompt abbreviates only the home prefix.
+                assert await run_lines(process, "cd .ssh", root_prompt("~/.ssh")) == (
+                    root_prompt("~/.ssh")
+                )
+                assert await run_lines(process, "cd /root", root_prompt("~")) == root_prompt("~")
+
+                process.stdin.write("exit\n")
+                result = await finish(process)
+                assert result.exit_status == 0
+            finally:
+                process.close()
+
+
+async def test_r8_6_failed_cd_keeps_prompt_and_cwd(tmp_path):
+    async with running_server(tmp_path) as port:
+        async with await connect(port) as conn:
+            process = await conn.create_process()
+            try:
+                assert await read_until(process, " ") == root_prompt("~")
+                assert await run_lines(process, "cd /etc", root_prompt("/etc")) == (
+                    root_prompt("/etc")
+                )
+                assert await run_lines(process, "cd /no/such/dir", root_prompt("/etc")) == (
+                    f"-bash: cd: /no/such/dir: No such file or directory\n{root_prompt('/etc')}"
+                )
+                assert await run_lines(process, "pwd", root_prompt("/etc")) == (
+                    f"/etc\n{root_prompt('/etc')}"
+                )
+                process.stdin.write("exit\n")
+                await finish(process)
+            finally:
+                process.close()
+
+
+async def test_r2_10_cd_carries_over_between_commands_in_one_session(tmp_path):
+    async with running_server(tmp_path) as port:
+        async with await connect(port) as conn:
+            process = await conn.create_process()
+            try:
+                assert await read_until(process, " ") == root_prompt("~")
+                assert await run_lines(process, "pwd", root_prompt("~")) == (
+                    f"/root\n{root_prompt('~')}"
+                )
+                assert await run_lines(process, "cd /etc", root_prompt("/etc")) == (
+                    root_prompt("/etc")
+                )
+                assert await run_lines(process, "pwd", root_prompt("/etc")) == (
+                    f"/etc\n{root_prompt('/etc')}"
+                )
+                # Relative cd builds on the carried-over cwd.
+                assert await run_lines(process, "cd ssh", root_prompt("/etc/ssh")) == (
+                    root_prompt("/etc/ssh")
+                )
+                assert await run_lines(process, "pwd", root_prompt("/etc/ssh")) == (
+                    f"/etc/ssh\n{root_prompt('/etc/ssh')}"
+                )
+                process.stdin.write("exit\n")
+                await finish(process)
+            finally:
+                process.close()
+
+
+async def test_r2_10_concurrent_sessions_do_not_share_cwd(tmp_path):
+    async with running_server(tmp_path) as port:
+        async with await connect(port) as conn_a, await connect(port) as conn_b:
+            proc_a = await conn_a.create_process()
+            proc_b = await conn_b.create_process()
+            try:
+                assert await read_until(proc_a, " ") == root_prompt("~")
+                assert await read_until(proc_b, " ") == root_prompt("~")
+
+                # Session A moves; session B must stay at home.
+                assert await run_lines(proc_a, "cd /var/log", root_prompt("/var/log")) == (
+                    root_prompt("/var/log")
+                )
+                assert await run_lines(proc_b, "pwd", root_prompt("~")) == (
+                    f"/root\n{root_prompt('~')}"
+                )
+
+                # Session B moves elsewhere; session A must stay where it was.
+                assert await run_lines(proc_b, "cd /etc", root_prompt("/etc")) == (
+                    root_prompt("/etc")
+                )
+                assert await run_lines(proc_a, "pwd", root_prompt("/var/log")) == (
+                    f"/var/log\n{root_prompt('/var/log')}"
+                )
+                assert await run_lines(proc_b, "pwd", root_prompt("/etc")) == (
+                    f"/etc\n{root_prompt('/etc')}"
+                )
+
+                for proc in (proc_a, proc_b):
+                    proc.stdin.write("exit\n")
+                    await finish(proc)
+            finally:
+                proc_a.close()
+                proc_b.close()
