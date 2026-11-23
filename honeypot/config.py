@@ -9,6 +9,7 @@ DEFAULT_SSH_HOST = "127.0.0.1"
 DEFAULT_SSH_PORT = 2222
 DEFAULT_LOGIN_TIMEOUT = 15.0
 DEFAULT_CREDENTIALS_PATH = "config/credentials.toml"
+DEFAULT_FS_TEMPLATE_PATH = "config/fs_template.toml"
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class Config:
     host_key_path: Path
     login_timeout: float
     credentials_path: Path
+    fs_template_path: Path
 
 
 def _require(name: str) -> str:
@@ -68,10 +70,15 @@ def load_config_from_env() -> Config:
     if not credentials_path.is_file():
         raise ConfigurationError(f"credentials file not found: {credentials_path}")
 
+    fs_template_path = Path(os.environ.get("HONEYPOT_FS_TEMPLATE_PATH") or DEFAULT_FS_TEMPLATE_PATH)
+    if not fs_template_path.is_file():
+        raise ConfigurationError(f"filesystem template not found: {fs_template_path}")
+
     return Config(
         ssh_host=os.environ.get("HONEYPOT_SSH_HOST") or DEFAULT_SSH_HOST,
         ssh_port=ssh_port,
         host_key_path=host_key_path,
         login_timeout=login_timeout,
         credentials_path=credentials_path,
+        fs_template_path=fs_template_path,
     )

@@ -23,21 +23,24 @@ class Context:
 Handler = Callable[[Context, list[str], str], CommandResult]
 
 
-def cmd_pwd(ctx: Context, args: list[str], stdin: str) -> CommandResult:
+def home_dir(username: str) -> str:
+    return "/root" if username == "root" else f"/home/{username}"
+
+
+def cmd_pwd(ctx: Context, _args: list[str], _stdin: str) -> CommandResult:
     return CommandResult(stdout=f"{ctx.cwd}\n")
 
 
-def cmd_whoami(ctx: Context, args: list[str], stdin: str) -> CommandResult:
+def cmd_whoami(ctx: Context, _args: list[str], _stdin: str) -> CommandResult:
     return CommandResult(stdout=f"{ctx.username}\n")
 
 
-def cmd_echo(ctx: Context, args: list[str], stdin: str) -> CommandResult:
+def cmd_echo(_ctx: Context, args: list[str], _stdin: str) -> CommandResult:
     return CommandResult(stdout=" ".join(args) + "\n")
 
 
 def cmd_cd(ctx: Context, args: list[str], _stdin: str) -> CommandResult:
-    home = "/root" if ctx.username == "root" else f"/home/{ctx.username}"
-    target = args[0] if args else home
+    target = args[0] if args else home_dir(ctx.username)
 
     node = ctx.vfs.resolve(ctx.cwd, target)
     if node is None:
@@ -61,10 +64,10 @@ REGISTRY: dict[str, Handler] = {
 
 def execute(ctx: Context, line: str) -> CommandResult:
     result = parse(line)
-
     if isinstance(result, ParseError):
         return CommandResult(stderr=result.message + "\n", exit_status=2)
 
+    # Until T2.2 adds VFS writes, every redirection fails like a read-only target.
     if result.redirect is not None:
         return CommandResult(
             stderr=f"-bash: {result.redirect.target}: Permission denied\n",
