@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from honeypot.commands.parser import ParseError, parse
 from honeypot.vfs import Node, VirtualFS, normalize_path
 
+KERNEL_RELEASE = "6.8.0-48-generic"
+KERNEL_VERSION = "#48-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep 27 14:04:52 UTC 2024"
+MACHINE = "x86_64"
+
 
 @dataclass
 class CommandResult:
@@ -27,6 +31,51 @@ def home_dir(username: str) -> str:
     return "/root" if username == "root" else f"/home/{username}"
 
 
+# ── Option parsing ────────────────────────────────────────────────────────────
+
+
+def _split_options(args: list[str]) -> tuple[list[str], list[str], list[str]]:
+    # Returns (short flags in order, long options, operands). "--" ends options.
+    flags: list[str] = []
+    long_options: list[str] = []
+    operands: list[str] = []
+    options_done = False
+    for arg in args:
+        if options_done:
+            operands.append(arg)
+        elif arg == "--":
+            options_done = True
+        elif arg.startswith("--"):
+            long_options.append(arg)
+        elif arg.startswith("-") and len(arg) > 1:
+            flags.extend(arg[1:])
+        else:
+            operands.append(arg)
+    return flags, long_options, operands
+
+
+def _option_error(
+    command: str, flags: list[str], long_options: list[str], allowed: str, status: int
+) -> CommandResult | None:
+    # GNU tools report the first bad option they meet, long or short.
+    hint = f"Try '{command} --help' for more information.\n"
+    if long_options:
+        return CommandResult(
+            stderr=f"{command}: unrecognized option '{long_options[0]}'\n{hint}",
+            exit_status=status,
+        )
+    for flag in flags:
+        if flag not in allowed:
+            return CommandResult(
+                stderr=f"{command}: invalid option -- '{flag}'\n{hint}",
+                exit_status=status,
+            )
+    return None
+
+
+# ── Simple commands ───────────────────────────────────────────────────────────
+
+
 def cmd_pwd(ctx: Context, _args: list[str], _stdin: str) -> CommandResult:
     return CommandResult(stdout=f"{ctx.cwd}\n")
 
@@ -37,6 +86,10 @@ def cmd_whoami(ctx: Context, _args: list[str], _stdin: str) -> CommandResult:
 
 def cmd_echo(_ctx: Context, args: list[str], _stdin: str) -> CommandResult:
     return CommandResult(stdout=" ".join(args) + "\n")
+
+
+def cmd_hostname(ctx: Context, _args: list[str], _stdin: str) -> CommandResult:
+    return CommandResult(stdout=f"{ctx.hostname}\n")
 
 
 def cmd_cd(ctx: Context, args: list[str], _stdin: str) -> CommandResult:
@@ -54,30 +107,6 @@ def cmd_cd(ctx: Context, args: list[str], _stdin: str) -> CommandResult:
     return CommandResult()
 
 
-KERNEL_RELEASE = "6.8.0-48-generic"
-KERNEL_VERSION = "#48-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep 27 14:04:52 UTC 2024"
-MACHINE = "x86_64"
-
-
-def _split_options(args: list[str]) -> tuple[set[str], list[str]]:
-    # "-la" -> {"l", "a"}; everything else is an operand. "--" ends options.
-    flags: set[str] = set()
-    operands: list[str] = []
-    options_done = False
-    for arg in args:
-        if not options_done and arg == "--":
-            options_done = True
-        elif not options_done and arg.startswith("-") and len(arg) > 1:
-            flags.update(arg[1:])
-        else:
-            operands.append(arg)
-    return flags, operands
-
-
-def cmd_hostname(ctx: Context, _args: list[str], _stdin: str) -> CommandResult:
-    return CommandResult(stdout=f"{ctx.hostname}\n")
-
-
 def cmd_cat(ctx: Context, args: list[str], stdin: str) -> CommandResult:
     if not args:
         return CommandResult(stdout=stdin)
@@ -85,6 +114,9 @@ def cmd_cat(ctx: Context, args: list[str], stdin: str) -> CommandResult:
     out: list[str] = []
     err: list[str] = []
     for arg in args:
+        if arg == "-":
+            out.append(stdin)
+            continue
         node = ctx.vfs.resolve(ctx.cwd, arg)
         if node is None:
             err.append(f"cat: {arg}: No such file or directory\n")
@@ -93,6 +125,9 @@ def cmd_cat(ctx: Context, args: list[str], stdin: str) -> CommandResult:
         else:
             out.append(node.content)
     return CommandResult(stdout="".join(out), stderr="".join(err), exit_status=1 if err else 0)
+
+
+# ── id and uname ──────────────────────────────────────────────────────────────
 
 
 def _lookup_ids(ctx: Context) -> tuple[int, int]:
@@ -117,14 +152,11 @@ def cmd_id(ctx: Context, _args: list[str], _stdin: str) -> CommandResult:
 
 
 def cmd_uname(ctx: Context, args: list[str], _stdin: str) -> CommandResult:
-    flags, _ = _split_options(args)
-    for flag in sorted(flags):
-        if flag not in "asnrvm":
-            return CommandResult(
-                stderr=f"uname: invalid option -- '{flag}'\n"
-                "Try 'uname --help' for more information.\n",
-                exit_status=1,
-            )
+    flags, long_options, _ = _split_options(args)
+    error = _option_error("uname", flags, long_options, "asnrvm", 1)
+    if error is not None:
+        return error
+
     values = {
         "s": "Linux",
         "n": ctx.hostname,
@@ -139,6 +171,9 @@ def cmd_uname(ctx: Context, args: list[str], _stdin: str) -> CommandResult:
         # uname prints fields in this fixed order, whatever order the flags came in.
         parts = [values[key] for key in "snrvm" if key in flags] or ["Linux"]
     return CommandResult(stdout=" ".join(parts) + "\n")
+
+
+# ── ls ────────────────────────────────────────────────────────────────────────
 
 
 def _mode_string(node: Node) -> str:
@@ -187,6 +222,7 @@ def _format_entries(entries: list[tuple[str, Node]], flags: set[str], total: boo
     if "l" in flags:
         lines = [_long_line(child, name) for name, child in entries]
         if total:
+            # -(-x // y) rounds up; ls counts 4 KiB blocks per started 4 KiB.
             blocks = sum(-(-_display_size(child) // 4096) * 4 for _, child in entries)
             lines.insert(0, f"total {blocks}")
         return "".join(line + "\n" for line in lines)
@@ -196,13 +232,11 @@ def _format_entries(entries: list[tuple[str, Node]], flags: set[str], total: boo
 
 
 def cmd_ls(ctx: Context, args: list[str], _stdin: str) -> CommandResult:
-    flags, operands = _split_options(args)
-    for flag in sorted(flags):
-        if flag not in "al":
-            return CommandResult(
-                stderr=f"ls: invalid option -- '{flag}'\nTry 'ls --help' for more information.\n",
-                exit_status=2,
-            )
+    flags, long_options, operands = _split_options(args)
+    error = _option_error("ls", flags, long_options, "al", 2)
+    if error is not None:
+        return error
+    flag_set = set(flags)
     targets = operands or ["."]
 
     out: list[str] = []
@@ -220,27 +254,29 @@ def cmd_ls(ctx: Context, args: list[str], _stdin: str) -> CommandResult:
 
     # Like real ls: files named on the command line first, then each directory.
     if files:
-        out.append(_format_entries(files, flags, total=False))
+        out.append(_format_entries(files, flag_set, total=False))
     for i, (target, node) in enumerate(dirs):
         if len(targets) > 1:
             if files or i > 0:
                 out.append("\n")
             out.append(f"{target}:\n")
-        out.append(_format_entries(_list_dir(node, flags), flags, total=True))
+        out.append(_format_entries(_list_dir(node, flag_set), flag_set, total=True))
 
     return CommandResult(stdout="".join(out), stderr="".join(err), exit_status=2 if err else 0)
 
+
+# ── Registry and execution ────────────────────────────────────────────────────
 
 REGISTRY: dict[str, Handler] = {
     "pwd": cmd_pwd,
     "whoami": cmd_whoami,
     "echo": cmd_echo,
+    "hostname": cmd_hostname,
     "cd": cmd_cd,
     "cat": cmd_cat,
-    "ls": cmd_ls,
     "id": cmd_id,
     "uname": cmd_uname,
-    "hostname": cmd_hostname,
+    "ls": cmd_ls,
 }
 
 
