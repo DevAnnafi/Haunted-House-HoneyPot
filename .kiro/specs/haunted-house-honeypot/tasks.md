@@ -96,6 +96,11 @@ Satisfies: R2.2.
 
 ### T2.4 — Command engine: parser and registry [dev]
 Implement `parse` and `execute` in `honeypot/commands/` with `Pipeline`, `CommandCall`, `CommandResult`, and the `REGISTRY`. Support `|` (up to 3 stages), `>`, `>>`. Unsupported syntax (`&&`, `||`, `;`, `&`, `$(...)`, backticks, `<`, here-docs, >3 stages) produces a bash-style error without host execution. Route unknown commands to the LLM fallback placeholder. Cap stdout at 256 KiB.
+**Polish after first deployment:**
+- `ls -la`: the `..` entry shows the current directory's mode, owner and date instead of the parent's. Look up the parent node for the `..` line.
+- `ls -l`: pad the owner, group and size columns to the widest entry, like GNU `ls` (currently a longer group name such as `shadow` shifts the size column).
+- `ls -l`: show the year instead of the time for files older than six months.
+- `ls` without `-l`: names print on one line; real `ls` arranges them in columns to fit the terminal width.
 Satisfies: R2.1, R2.6, R2.7, R2.8, R2.9, R2.13.
 
 ### T2.5 — Command handlers: navigation and inspection (pwd, cd, ls, cat, echo) [dev]
