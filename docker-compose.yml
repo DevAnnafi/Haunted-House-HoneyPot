@@ -39,11 +39,22 @@ services:
       # use e.g. "2222:2222" instead.
       - "22:2222"
     networks:
-      - honeypot_net # published SSH port and outbound access to the LLM API
+      - honeypot_net # published SSH port; egress is blocked by the host firewall (below)
       - db_net # internal only: reaches PostgreSQL
-    # TODO(T9.6): egress control. Restrict outbound traffic from this container to
-    # PostgreSQL and the LLM API only (host firewall / DOCKER-USER rules, see
-    # design.md section 11). Until then honeypot_net has unrestricted egress.
+    # Egress control (T9.6). The honeypot may reach only PostgreSQL, over db_net. It needs
+    # honeypot_net (a non-internal network) only for the published SSH port, and Docker
+    # cannot filter outbound traffic per network from inside Compose. So on the Linux
+    # host, scripts/egress-firewall.sh adds DOCKER-USER (and INPUT) rules that drop
+    # every new connection that starts in honeypot_net's fixed subnet below, and allow
+    # replies to inbound SSH. Run it on every deployment host (docs/deployment.md). Until it
+    # has run, this container has unrestricted outbound access.
+    dns:
+      # DNS never passes through those firewall rules: Docker's embedded resolver
+      # (127.0.0.11) forwards outside lookups on the container's behalf. Pointing it
+      # at an unroutable TEST-NET-1 address makes every outside lookup fail, while
+      # container names such as "postgres" still resolve. Replace this with the LLM
+      # egress proxy when it exists (design.md, Deployment).
+      - 192.0.2.1
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,6 +93,12 @@ services:
 networks:
   honeypot_net:
     driver: bridge
+    ipam:
+      config:
+        # Fixed so the host firewall can match it. Keep in sync with HONEYPOT_NET_SUBNET
+        # in scripts/egress-firewall.sh. If this range clashes with a network on your
+        # host, pick another unused private range and change both.
+        - subnet: 172.30.250.0/24
   db_net:
     driver: bridge
     internal: true # no route to the host or the internet

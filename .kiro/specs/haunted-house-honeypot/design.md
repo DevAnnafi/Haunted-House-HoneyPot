@@ -556,13 +556,22 @@ No attacker-visible error message ever reveals internal implementation details, 
   - `api`: not published publicly; reachable on localhost or a VPN.
   - `postgres`: not published at all.
 - **Networks:**
-  - `honeypot_net`: honeypot ↔ postgres.
-  - `dashboard_net`: api ↔ postgres.
+  - `db_net`: honeypot ↔ postgres. It is `internal: true`, so its traffic never leaves Docker. It is the honeypot's only link to PostgreSQL.
+  - `honeypot_net`: ingress only. It carries the published SSH port (inbound connections and their replies). It has a fixed subnet (`172.30.250.0/24`) so the host firewall can block every new outbound connection from it (see Egress control). PostgreSQL is not on this network.
+  - `dashboard_net`: api ↔ postgres (planned; added with the dashboard API service).
   - The honeypot and api share no network.
 - **Egress control [DECISION]:** the honeypot may reach only PostgreSQL and the LLM API. Options:
 1. Put the honeypot on an `internal` Docker network (no internet) and route LLM requests through a small allowlisting egress proxy container.
 2. Host firewall rules (the `DOCKER-USER` iptables chain) restricting the honeypot container's outbound traffic to the LLM API's addresses.
 Option 1 is easier to reason about; option 2 avoids a fourth container but LLM API addresses can change.
+- **Egress control, first deployment (T9.6, decided):** the first deployment does not use the LLM, so the honeypot may reach only PostgreSQL, over the internal `db_net`. `honeypot_net` must stay non-internal for the published SSH port, so egress is blocked on the host:
+  - `honeypot_net` has a fixed subnet (`172.30.250.0/24`).
+  - `scripts/egress-firewall.sh` sends traffic from it through a `HONEYPOT_EGRESS` chain, with a jump from `DOCKER-USER` (routed traffic) and from `INPUT` (traffic to the host itself). The chain allows `ESTABLISHED,RELATED` (replies to inbound SSH) and drops every new connection.
+  - The honeypot service sets `dns: 192.0.2.1` (unroutable), because Docker's embedded resolver makes outside lookups on the container's behalf, outside those rules.
+  - A systemd unit applies the rules before `docker.service` starts, so no container runs without them. The script creates `DOCKER-USER` itself if Docker has not yet, and Docker keeps that chain when it starts.
+  - The unit fails closed (`RequiredBy=docker.service`): if it fails, Docker does not start. The host runs only the honeypot stack, so an outage is acceptable. Running the honeypot without egress rules is not.
+  - Setup, persistence and the required verification are in `docs/deployment.md`.
+- **LLM egress, later:** when the LLM fallback (R4) is deployed, LLM API traffic will go through an allowlisting egress proxy (option 1). The proxy runs in its own container and allows only the configured LLM API hostname over HTTPS. The honeypot reaches it over an internal network. The host firewall rules above stay in place, so the proxy is the only way out. Address allowlisting in iptables (option 2) is not used, because the LLM API's addresses can change.
 - **Python version:** the container image uses the same Python version as development.
 - **Secrets:** `.env` on the server only (database passwords, HMAC secret, LLM API key, demo credential).
 
@@ -571,7 +580,7 @@ Option 1 is easier to reason about; option 2 avoids a fourth container but LLM A
 1. **IPv6:** should the honeypot also listen on IPv6?
 2. **Fingerprint parity:** restrict advertised algorithms to match OpenSSH 9.6, and offer public-key auth that always fails (spike finding)?
 3. **Forwarding refusal message:** return "administratively prohibited" like OpenSSH instead of "Connection refused"?
-4. **Egress control:** proxy container or host firewall (section 11)?
+4. **Egress control:** resolved (T9.6). Host firewall blocks all egress for the first deployment; LLM traffic will use an allowlisting proxy. See Deployment.
 5. **LLM provider:** still to be chosen (`tech.md`).
 6. **R7 identity policy:** an ADR is required before any R7 work.
 7. **`/dev/null` and device files:** the template has no device nodes (only `file` and `dir` types), so `/dev` is empty. Deferred until redirection (R2.15, Could, T2.13) is built. At that point, special-case `/dev/null` in the VFS so writes to it are discarded and reads return empty, rather than adding a device node type.

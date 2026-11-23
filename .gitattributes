@@ -1,0 +1,2 @@
+# Shell scripts run on Linux hosts; a CRLF line ending breaks the "#!/usr/bin/env bash" line.
+*.sh text eol=lf
