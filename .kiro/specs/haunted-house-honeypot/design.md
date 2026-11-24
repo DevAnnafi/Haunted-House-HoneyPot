@@ -198,11 +198,23 @@ Each component lists its **responsibility**, **interface** (main classes and fun
 
 - **Responsibility:** durably store every event without blocking the attacker's path.
 - **Interface:**
-  - `Recorder.record(session, event_type, payload)`: assigns the sequence number and timestamp, enforces the 10 MiB per-session cap, and puts the event on a bounded `asyncio.Queue`.
-  - A background writer task inserts events into PostgreSQL through an async `psycopg` pool, then sends `NOTIFY honeypot_events` with `{session_id, seq}` only.
+  - `Recorder.start(session_id, client_ip, client_port, client_version)`: creates the in-memory session state when a connection is accepted. Nothing is written yet.
+  - `Recorder.record(session_id, event_type, payload) -> bool`: assigns the sequence number and timestamp and enforces the 10 MiB per-session cap. Before authentication is decided, the event is buffered; afterwards, it goes on a bounded `asyncio.Queue`. Returns `False` when the session must end (recording failed, cap reached, or queue full).
+  - `Recorder.authenticated(session_id, username)`: enqueues the session row (`auth_succeeded = true`), then the buffered events.
+  - `Recorder.end(session_id, end_reason, final_haunt_level)`: inserts the session row first if it never was (`auth_succeeded = false`), then enqueues the close-out `UPDATE`.
+  - A single background writer task takes items off the queue in order, writes them to PostgreSQL through an async `psycopg` pool, and sends `NOTIFY honeypot_events` with `{session_id, seq}` only after each event insert.
+  - Queue item types (`SessionRow`, `EventRow`, `SessionClose`) and the `EventType` and `EndReason` enums live in `shared/events.py`.
 - **Fail closed (R5.11):** if an insert fails or the queue is full, the affected session is terminated rather than allowed to continue unrecorded.
 - **Timestamps:** UTC, millisecond precision (R5.12).
 - **Requirements:** R5.1–R5.4, R5.8, R5.10–R5.12, R8.9.
+- **Decisions (2026-11-23):**
+  - **Background writes:** sessions enqueue events without waiting; one writer task inserts them. Database latency never appears in command timing, which could otherwise reveal the honeypot.
+  - **Bounded queue, fail closed:** a full queue is a recording failure for the session that hit it, never a silent drop. Silent drops would let an attacker flood the queue and act unrecorded.
+  - **Background failures:** when an insert fails, the writer marks that session failed; the session's next `record()` call returns failure and the shell closes the connection with `end_reason = recording_failure`.
+  - **Startup:** the honeypot refuses to start if PostgreSQL is unreachable (see Error Handling).
+  - **Session row timing:** session rows are inserted once authentication is decided, with pre-auth events (at most one `connect` and five `auth_attempt`s, bounded by R8.7) buffered in memory. `honeypot_writer` keeps no `UPDATE` on `username` or `auth_succeeded` (ADR-0004), so a compromised honeypot cannot rewrite who logged in.
+  - **Ordering:** one writer processes the queue in order, so a session's row is always inserted before its events.
+  - **Event types in `shared/`:** plain `dataclasses` and `StrEnum`s, not pydantic. No new runtime dependency; the database `CHECK` constraints and the dashboard API validate data. `EventType` matches the `events_event_type_valid` constraint exactly, so a misspelled type fails in Python instead of ending a session at insert time.
 
 ### 3.12 Dashboard API (`api/`)
 
