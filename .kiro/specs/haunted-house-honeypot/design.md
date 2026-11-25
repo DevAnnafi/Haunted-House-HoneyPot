@@ -234,6 +234,9 @@ Each component lists its **responsibility**, **interface** (main classes and fun
 
 - **Live updates:** one dedicated connection runs `LISTEN honeypot_events`; each notification fetches the row by ID and fans it out to connected SSE clients. SSE event IDs are sequence numbers, so `Last-Event-ID` reconnection resends missed events (R6.13).
 - **Database roles:** requests run as `dashboard_judge` or `dashboard_admin` depending on the user's role, so the database enforces permissions as a second layer (ADR-0004).
+- **Stale sessions:** a session with `ended_at = NULL` whose `started_at` is older than the R8.5 lifetime limit (1,800 s) is shown as ended with an unknown reason. Its close-out was lost (a full recorder queue at session end, or a honeypot crash or kill), and the lifetime watchdog guarantees it can no longer be running. This keeps `honeypot_writer` unable to read `ended_at` (ADR-0004).
+- **Requirements:** R5.9, R5.13, R5.14, R6.1–R6.16.
+- **Database roles:** requests run as `dashboard_judge` or `dashboard_admin` depending on the user's role, so the database enforces permissions as a second layer (ADR-0004).
 - **Requirements:** R5.9, R5.13, R5.14, R6.1–R6.16.
 
 ### 3.13 Dashboard Frontend (`dashboard/`)
