@@ -31,7 +31,11 @@ CONFIG_VARS = (
     "HONEYPOT_SETUP_TIMEOUT",
     "HONEYPOT_CREDENTIALS_PATH",
     "HONEYPOT_FS_TEMPLATE_PATH",
+    "HONEYPOT_DATABASE_URL",
 )
+
+# Obviously fake; config loading only checks that the variable is non-empty.
+FAKE_DATABASE_URL = "postgresql://honeypot_writer:fake-password@localhost:5432/honeypot"
 
 
 @pytest.fixture(autouse=True)
@@ -73,10 +77,11 @@ def fs_template(tmp_path: Path) -> Path:
 def valid_env(
     monkeypatch: pytest.MonkeyPatch, host_key: Path, credentials: Path, fs_template: Path
 ) -> pytest.MonkeyPatch:
-    """Environment with the three required file paths set to real files."""
+    """Environment with the required file paths set to real files and a database URL."""
     monkeypatch.setenv("HONEYPOT_HOST_KEY_PATH", str(host_key))
     monkeypatch.setenv("HONEYPOT_CREDENTIALS_PATH", str(credentials))
     monkeypatch.setenv("HONEYPOT_FS_TEMPLATE_PATH", str(fs_template))
+    monkeypatch.setenv("HONEYPOT_DATABASE_URL", FAKE_DATABASE_URL)
     return monkeypatch
 
 
@@ -252,6 +257,7 @@ def _chdir_with_default_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
 def test_r1_unset_optional_values_use_defaults(monkeypatch, tmp_path, host_key):
     _chdir_with_default_files(monkeypatch, tmp_path)
     monkeypatch.setenv("HONEYPOT_HOST_KEY_PATH", str(host_key))
+    monkeypatch.setenv("HONEYPOT_DATABASE_URL", FAKE_DATABASE_URL)
 
     config = load_config_from_env()
 
@@ -266,6 +272,7 @@ def test_r1_unset_optional_values_use_defaults(monkeypatch, tmp_path, host_key):
 def test_r1_empty_optional_values_fall_back_to_defaults(monkeypatch, tmp_path, host_key):
     _chdir_with_default_files(monkeypatch, tmp_path)
     monkeypatch.setenv("HONEYPOT_HOST_KEY_PATH", str(host_key))
+    monkeypatch.setenv("HONEYPOT_DATABASE_URL", FAKE_DATABASE_URL)
     for name in (
         "HONEYPOT_SSH_HOST",
         "HONEYPOT_SSH_PORT",
@@ -296,6 +303,30 @@ def test_r1_explicit_values_override_defaults(valid_env, host_key, credentials):
     assert config.login_timeout == 3.5
     assert config.host_key_path == host_key
     assert config.credentials_path == credentials
+    assert config.database_url == FAKE_DATABASE_URL
+
+
+# ---------------------------------------------------------------------------
+# Database URL
+# ---------------------------------------------------------------------------
+
+
+def test_r5_11_database_url_missing_is_rejected(valid_env):
+    valid_env.delenv("HONEYPOT_DATABASE_URL")
+    with pytest.raises(ConfigurationError) as exc:
+        load_config_from_env()
+    assert str(exc.value) == "HONEYPOT_DATABASE_URL must be set"
+
+
+def test_r5_11_database_url_empty_is_rejected(valid_env):
+    valid_env.setenv("HONEYPOT_DATABASE_URL", "")
+    with pytest.raises(ConfigurationError) as exc:
+        load_config_from_env()
+    assert str(exc.value) == "HONEYPOT_DATABASE_URL must be set"
+
+
+def test_r5_11_database_url_is_loaded_unchanged(valid_env):
+    assert load_config_from_env().database_url == FAKE_DATABASE_URL
 
 
 # ---------------------------------------------------------------------------

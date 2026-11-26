@@ -20,6 +20,7 @@ class Config:
     login_timeout: float
     credentials_path: Path
     fs_template_path: Path
+    database_url: str
 
 
 def _require(name: str) -> str:
@@ -74,6 +75,11 @@ def load_config_from_env() -> Config:
     if not fs_template_path.is_file():
         raise ConfigurationError(f"filesystem template not found: {fs_template_path}")
 
+    if not fs_template_path.is_file():
+        raise ConfigurationError(f"filesystem template not found: {fs_template_path}")
+
+    database_url = _require("HONEYPOT_DATABASE_URL")
+
     return Config(
         ssh_host=os.environ.get("HONEYPOT_SSH_HOST") or DEFAULT_SSH_HOST,
         ssh_port=ssh_port,
@@ -81,4 +87,5 @@ def load_config_from_env() -> Config:
         login_timeout=login_timeout,
         credentials_path=credentials_path,
         fs_template_path=fs_template_path,
+        database_url=database_url,
     )
