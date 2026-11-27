@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import Callable
 from pathlib import Path
@@ -21,6 +22,8 @@ class HoneypotServer(asyncssh.SSHServer):
         auth: AuthPolicy,
         admission: AdmissionController,
         recorder: Recorder,
+        idle_timeout: float,
+        session_lifetime: float,
     ) -> None:
         super().__init__()
         self._auth = auth
@@ -32,6 +35,11 @@ class HoneypotServer(asyncssh.SSHServer):
         self._failed_attempts = 0
         self._session_id: UUID | None = None
         self._end_reason: EndReason | None = None
+        self._idle_timeout = idle_timeout
+        self._session_lifetime = session_lifetime
+        self._idle_timer: asyncio.TimerHandle | None = None
+        self._lifetime_timer: asyncio.TimerHandle | None = None
+        self._closed = False
 
     def _record(self, event_type: EventType, payload: dict[str, Any]) -> None:
         # Fail closed (R5.11): a session that can't be recorded is ended.
@@ -40,6 +48,24 @@ class HoneypotServer(asyncssh.SSHServer):
         if not self._recorder.record(self._session_id, event_type, payload):
             if self._conn is not None:
                 self._conn.close()
+
+    def _expire(self, reason: EndReason) -> None:
+        log.info("SESSION TIMEOUT ip=%s reason=%s", self._client_ip, reason)
+        if self._end_reason is None:
+            self._end_reason = reason
+        if self._conn is not None:
+            self._conn.close()
+
+    def _touch(self) -> None:
+        # Any client activity restarts the idle timer (R8.4). Once the connection
+        # is gone, activity reported late by the shell must not start a new timer.
+        if self._closed:
+            return
+        if self._idle_timer is not None:
+            self._idle_timer.cancel()
+        self._idle_timer = asyncio.get_running_loop().call_later(
+            self._idle_timeout, self._expire, EndReason.IDLE
+        )
 
     def connection_made(self, conn: asyncssh.SSHServerConnection) -> None:
         self._conn = conn
@@ -54,12 +80,26 @@ class HoneypotServer(asyncssh.SSHServer):
         self._admitted = True
         log.info("ADMISSION ACCEPTED ip=%s", self._client_ip)
 
+        # The lifetime limit counts from acceptance and never resets (R8.5).
+        self._lifetime_timer = asyncio.get_running_loop().call_later(
+            self._session_lifetime, self._expire, EndReason.LIFETIME
+        )
+        self._touch()
+
         self._session_id = uuid4()
-        conn.set_extra_info(session_id=self._session_id)
+        # The shell reads both: the session ID for recording, and touch to report
+        # activity so an active interactive session isn't closed as idle.
+        conn.set_extra_info(session_id=self._session_id, touch=self._touch)
         self._recorder.start(self._session_id, self._client_ip, peer[1], None)
         self._record(EventType.CONNECT, {})
 
     def connection_lost(self, exc: Exception | None) -> None:
+        self._closed = True
+        for timer in (self._idle_timer, self._lifetime_timer):
+            if timer is not None:
+                timer.cancel()
+        self._idle_timer = None
+        self._lifetime_timer = None
         if self._admitted:
             self._admission.release(self._client_ip)
             self._admitted = False
@@ -81,6 +121,7 @@ class HoneypotServer(asyncssh.SSHServer):
         return True
 
     def validate_password(self, username: str, password: str) -> bool:
+        self._touch()
         success = self._auth.check(username, password)
         result = "SUCCESS" if success else "FAILED"
         fingerprint = self._auth.fingerprint(password)
@@ -174,9 +215,11 @@ async def create_honeypot_server(
     process_factory: Callable,
     recorder: Recorder,
     login_timeout: float = 15.0,
+    idle_timeout: float = 300.0,
+    session_lifetime: float = 1800.0,
 ) -> asyncssh.SSHAcceptor:
     return await asyncssh.create_server(
-        lambda: HoneypotServer(auth, admission, recorder),
+        lambda: HoneypotServer(auth, admission, recorder, idle_timeout, session_lifetime),
         host,
         port,
         server_host_keys=[str(host_key_path)],

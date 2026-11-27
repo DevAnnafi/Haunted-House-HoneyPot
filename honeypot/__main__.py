@@ -42,6 +42,8 @@ async def serve(config: Config, auth: AuthPolicy, base_root: Node) -> None:
             process_factory=partial(handle_process, base_root=base_root, recorder=recorder),
             recorder=recorder,
             login_timeout=config.login_timeout,
+            idle_timeout=config.idle_timeout,
+            session_lifetime=config.session_lifetime,
         )
 
         log.info("HONEYPOT LISTENING host=%s port=%d", config.ssh_host, config.ssh_port)

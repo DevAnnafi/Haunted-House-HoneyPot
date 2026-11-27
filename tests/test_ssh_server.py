@@ -8,8 +8,8 @@ No real .env, host key, or config/credentials.toml is read.
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 import asyncssh
@@ -373,42 +373,62 @@ def module_policy(tmp_path_factory) -> AuthPolicy:
     return make_policy(tmp_path_factory.mktemp("policy"))
 
 
-def make_server(
+# Long enough that neither timer can fire during a unit test.
+UNIT_IDLE_TIMEOUT = 300.0
+UNIT_SESSION_LIFETIME = 1800.0
+
+
+@contextmanager
+def made_server(
     policy: AuthPolicy, recorder: Recorder | None = None
-) -> tuple[HoneypotServer, FakeConn]:
+) -> Iterator[tuple[HoneypotServer, FakeConn]]:
+    """A server after connection_made. Must run inside an event loop (it starts timers).
+
+    connection_lost(None) runs on exit so the timers are cancelled. It is safe to call it
+    again inside the test, because a second call finds nothing left to release.
+    """
     recorder = recorder if recorder is not None else Recorder()
-    server = HoneypotServer(policy, AdmissionController(), recorder)
+    server = HoneypotServer(
+        policy,
+        AdmissionController(),
+        recorder,
+        UNIT_IDLE_TIMEOUT,
+        UNIT_SESSION_LIFETIME,
+    )
     conn = FakeConn()
     server.connection_made(conn)
-    assert conn.close_calls == 0
-    return server, conn
+    try:
+        assert conn.close_calls == 0
+        yield server, conn
+    finally:
+        server.connection_lost(None)
 
 
-def test_r8_7_five_failed_attempts_close_the_connection(module_policy):
-    server, conn = make_server(module_policy)
-    for _ in range(MAX_FAILED_ATTEMPTS):
-        assert server.validate_password("attacker", "wrong") is False
-    assert MAX_FAILED_ATTEMPTS == 5
-    assert conn.close_calls == 1
+async def test_r8_7_five_failed_attempts_close_the_connection(module_policy):
+    with made_server(module_policy) as (server, conn):
+        for _ in range(MAX_FAILED_ATTEMPTS):
+            assert server.validate_password("attacker", "wrong") is False
+        assert MAX_FAILED_ATTEMPTS == 5
+        assert conn.close_calls == 1
 
 
-def test_r8_7_four_failed_attempts_do_not_close_the_connection(module_policy):
-    server, conn = make_server(module_policy)
-    for _ in range(MAX_FAILED_ATTEMPTS - 1):
-        assert server.validate_password("attacker", "wrong") is False
-    assert conn.close_calls == 0
+async def test_r8_7_four_failed_attempts_do_not_close_the_connection(module_policy):
+    with made_server(module_policy) as (server, conn):
+        for _ in range(MAX_FAILED_ATTEMPTS - 1):
+            assert server.validate_password("attacker", "wrong") is False
+        assert conn.close_calls == 0
 
 
-def test_r1_5_attempts_logged_with_fingerprint_and_never_the_password(module_policy, caplog):
+async def test_r1_5_attempts_logged_with_fingerprint_and_never_the_password(module_policy, caplog):
     secret_password = "hunter2-attacker-guess"
     other_password = "another-secret-guess"
-    server, _conn = make_server(module_policy)
 
-    with caplog.at_level(logging.DEBUG, logger="honeypot.ssh_server"):
-        caplog.clear()
-        assert server.validate_password("mallory", secret_password) is False
-        assert server.validate_password(LISTED_USER, LISTED_PASS) is True
-        assert server.validate_password("mallory", other_password) is False
+    with made_server(module_policy) as (server, _conn):
+        with caplog.at_level(logging.DEBUG, logger="honeypot.ssh_server"):
+            caplog.clear()
+            assert server.validate_password("mallory", secret_password) is False
+            assert server.validate_password(LISTED_USER, LISTED_PASS) is True
+            assert server.validate_password("mallory", other_password) is False
 
     auth_records = [r for r in caplog.records if r.getMessage().startswith("AUTH ")]
     messages = [r.getMessage() for r in auth_records]
@@ -444,9 +464,14 @@ def test_r1_5_auth_log_messages_are_single_line_for_any_username(module_policy, 
     old_level = logger.level
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)
+
+    async def attempt() -> None:
+        with made_server(module_policy) as (server, _conn):
+            server.validate_password(username, "wrong")
+
     try:
-        server, _conn = make_server(module_policy)
-        server.validate_password(username, "wrong")
+        # Hypothesis can't drive an async test, so each example runs its own loop.
+        asyncio.run(attempt())
     finally:
         logger.removeHandler(handler)
         logger.setLevel(old_level)
@@ -480,13 +505,15 @@ async def test_r8_8_setup_timeout_closes_unauthenticated_connection(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_r5_connect_auth_attempt_and_session_row_use_fingerprint_never_password(module_policy):
+async def test_r5_connect_auth_attempt_and_session_row_use_fingerprint_never_password(
+    module_policy,
+):
     wrong_password = "hunter2-attacker-guess"
     recorder = Recorder()
-    server, _conn = make_server(module_policy, recorder)
-    assert server.validate_password("mallory", wrong_password) is False
-    assert server.validate_password(LISTED_USER, LISTED_PASS) is True
-    server.connection_lost(None)
+    with made_server(module_policy, recorder) as (server, _conn):
+        assert server.validate_password("mallory", wrong_password) is False
+        assert server.validate_password(LISTED_USER, LISTED_PASS) is True
+        server.connection_lost(None)
 
     items = drain(recorder)
     fp = module_policy.fingerprint
@@ -514,13 +541,13 @@ def test_r5_connect_auth_attempt_and_session_row_use_fingerprint_never_password(
         assert password not in repr(items)
 
 
-def test_r8_7_five_failed_passwords_end_the_session_with_auth_failures(module_policy):
+async def test_r8_7_five_failed_passwords_end_the_session_with_auth_failures(module_policy):
     recorder = Recorder()
-    server, conn = make_server(module_policy, recorder)
-    for _ in range(MAX_FAILED_ATTEMPTS):
-        assert server.validate_password("attacker", "wrong") is False
-    assert conn.close_calls == 1
-    server.connection_lost(None)
+    with made_server(module_policy, recorder) as (server, conn):
+        for _ in range(MAX_FAILED_ATTEMPTS):
+            assert server.validate_password("attacker", "wrong") is False
+        assert conn.close_calls == 1
+        server.connection_lost(None)
 
     items = drain(recorder)
     row = session_row(items)
@@ -533,12 +560,12 @@ def test_r8_7_five_failed_passwords_end_the_session_with_auth_failures(module_po
     assert session_close(items).end_reason is EndReason.AUTH_FAILURES
 
 
-def test_r8_7_four_failed_passwords_end_the_session_as_disconnect(module_policy):
+async def test_r8_7_four_failed_passwords_end_the_session_as_disconnect(module_policy):
     recorder = Recorder()
-    server, _conn = make_server(module_policy, recorder)
-    for _ in range(MAX_FAILED_ATTEMPTS - 1):
-        server.validate_password("attacker", "wrong")
-    server.connection_lost(None)
+    with made_server(module_policy, recorder) as (server, _conn):
+        for _ in range(MAX_FAILED_ATTEMPTS - 1):
+            server.validate_password("attacker", "wrong")
+        server.connection_lost(None)
     assert session_close(drain(recorder)).end_reason is EndReason.DISCONNECT
 
 
@@ -615,12 +642,12 @@ async def test_r1_10_remote_forward_denial_is_recorded(tmp_path):
     ]
 
 
-def test_r1_10_unix_forward_denials_are_recorded(module_policy):
+async def test_r1_10_unix_forward_denials_are_recorded(module_policy):
     recorder = Recorder()
-    server, _conn = make_server(module_policy, recorder)
-    assert server.unix_connection_requested("/tmp/a.sock") is False
-    assert server.unix_server_requested("/tmp/b.sock") is False
-    server.connection_lost(None)
+    with made_server(module_policy, recorder) as (server, _conn):
+        assert server.unix_connection_requested("/tmp/a.sock") is False
+        assert server.unix_server_requested("/tmp/b.sock") is False
+        server.connection_lost(None)
 
     assert [e for e in events_of(drain(recorder)) if e[0] is EventType.FORWARD_DENIED] == [
         (EventType.FORWARD_DENIED, {"type": "unix-local", "dest_path": "/tmp/a.sock"}),

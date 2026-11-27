@@ -16,7 +16,9 @@ from honeypot.auth import ConfigurationError
 from honeypot.config import (
     DEFAULT_CREDENTIALS_PATH,
     DEFAULT_FS_TEMPLATE_PATH,
+    DEFAULT_IDLE_TIMEOUT,
     DEFAULT_LOGIN_TIMEOUT,
+    DEFAULT_SESSION_LIFETIME,
     DEFAULT_SSH_HOST,
     DEFAULT_SSH_PORT,
     load_config_from_env,
@@ -29,6 +31,8 @@ CONFIG_VARS = (
     "HONEYPOT_SSH_PORT",
     "HONEYPOT_HOST_KEY_PATH",
     "HONEYPOT_SETUP_TIMEOUT",
+    "HONEYPOT_IDLE_TIMEOUT",
+    "HONEYPOT_SESSION_LIFETIME",
     "HONEYPOT_CREDENTIALS_PATH",
     "HONEYPOT_FS_TEMPLATE_PATH",
     "HONEYPOT_DATABASE_URL",
@@ -173,6 +177,68 @@ def test_r8_8_positive_timeout_is_accepted(valid_env):
     config = load_config_from_env()
     assert config.login_timeout == 0.5
     assert math.isfinite(config.login_timeout)
+
+
+# ---------------------------------------------------------------------------
+# Idle timeout and session lifetime (R8.4, R8.5)
+# ---------------------------------------------------------------------------
+
+LIMIT_VARS = (
+    ("HONEYPOT_IDLE_TIMEOUT", "idle_timeout", 300.0),
+    ("HONEYPOT_SESSION_LIFETIME", "session_lifetime", 1800.0),
+)
+
+
+def test_r8_4_r8_5_documented_defaults_are_300_and_1800_seconds():
+    assert DEFAULT_IDLE_TIMEOUT == 300.0
+    assert DEFAULT_SESSION_LIFETIME == 1800.0
+
+
+@pytest.mark.parametrize(("name", "field", "default"), LIMIT_VARS)
+def test_r8_4_r8_5_unset_limit_uses_the_default(valid_env, name, field, default):
+    assert getattr(load_config_from_env(), field) == default
+
+
+@pytest.mark.parametrize(("name", "field", "default"), LIMIT_VARS)
+def test_r8_4_r8_5_empty_limit_uses_the_default(valid_env, name, field, default):
+    valid_env.setenv(name, "")
+    assert getattr(load_config_from_env(), field) == default
+
+
+@pytest.mark.parametrize(("name", "field", "default"), LIMIT_VARS)
+@pytest.mark.parametrize(("raw", "expected"), [("0.5", 0.5), ("60", 60.0), ("7200", 7200.0)])
+def test_r8_4_r8_5_override_is_used(valid_env, name, field, default, raw, expected):
+    valid_env.setenv(name, raw)
+    config = load_config_from_env()
+    assert getattr(config, field) == expected
+    assert math.isfinite(getattr(config, field))
+
+
+def test_r8_4_r8_5_the_two_limits_are_independent(valid_env):
+    valid_env.setenv("HONEYPOT_IDLE_TIMEOUT", "12")
+    config = load_config_from_env()
+    assert config.idle_timeout == 12.0
+    assert config.session_lifetime == 1800.0
+
+
+@pytest.mark.parametrize(("name", "field", "default"), LIMIT_VARS)
+@pytest.mark.parametrize("raw", ["0", "0.0", "-1", "-0.5", "nan", "NaN", "inf", "-inf"])
+def test_r8_4_r8_5_non_positive_or_non_finite_limit_is_rejected(
+    valid_env, name, field, default, raw
+):
+    valid_env.setenv(name, raw)
+    with pytest.raises(ConfigurationError) as exc:
+        load_config_from_env()
+    assert str(exc.value) == f"{name} must be a positive number, got {float(raw)}"
+
+
+@pytest.mark.parametrize(("name", "field", "default"), LIMIT_VARS)
+@pytest.mark.parametrize("raw", ["abc", "1,5", "5s", " "])
+def test_r8_4_r8_5_non_numeric_limit_is_rejected(valid_env, name, field, default, raw):
+    valid_env.setenv(name, raw)
+    with pytest.raises(ConfigurationError) as exc:
+        load_config_from_env()
+    assert str(exc.value) == f"{name} must be a number, got {raw!r}"
 
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,8 @@ DEFAULT_SSH_PORT = 2222
 DEFAULT_LOGIN_TIMEOUT = 15.0
 DEFAULT_CREDENTIALS_PATH = "config/credentials.toml"
 DEFAULT_FS_TEMPLATE_PATH = "config/fs_template.toml"
+DEFAULT_IDLE_TIMEOUT = 300.0
+DEFAULT_SESSION_LIFETIME = 1800.0
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,8 @@ class Config:
     credentials_path: Path
     fs_template_path: Path
     database_url: str
+    idle_timeout: float
+    session_lifetime: float
 
 
 def _require(name: str) -> str:
@@ -67,6 +71,18 @@ def load_config_from_env() -> Config:
             f"HONEYPOT_SETUP_TIMEOUT must be a positive number, got {login_timeout}"
         )
 
+    idle_timeout = _float_env("HONEYPOT_IDLE_TIMEOUT", DEFAULT_IDLE_TIMEOUT)
+    if not math.isfinite(idle_timeout) or idle_timeout <= 0:
+        raise ConfigurationError(
+            f"HONEYPOT_IDLE_TIMEOUT must be a positive number, got {idle_timeout}"
+        )
+
+    session_lifetime = _float_env("HONEYPOT_SESSION_LIFETIME", DEFAULT_SESSION_LIFETIME)
+    if not math.isfinite(session_lifetime) or session_lifetime <= 0:
+        raise ConfigurationError(
+            f"HONEYPOT_SESSION_LIFETIME must be a positive number, got {session_lifetime}"
+        )
+
     credentials_path = Path(os.environ.get("HONEYPOT_CREDENTIALS_PATH") or DEFAULT_CREDENTIALS_PATH)
     if not credentials_path.is_file():
         raise ConfigurationError(f"credentials file not found: {credentials_path}")
@@ -88,4 +104,6 @@ def load_config_from_env() -> Config:
         credentials_path=credentials_path,
         fs_template_path=fs_template_path,
         database_url=database_url,
+        idle_timeout=idle_timeout,
+        session_lifetime=session_lifetime,
     )

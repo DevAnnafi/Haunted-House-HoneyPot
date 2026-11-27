@@ -124,6 +124,8 @@ async def run_interactive(
     prompt_char = "#" if ctx.username == "root" else "$"
     home = home_dir(ctx.username)
     client_ip = process.get_extra_info("peername")[0]
+    # Reports activity to the server's idle timer (R8.4).          # NEW
+    touch = process.get_extra_info("touch") or (lambda: None)  # NEW
 
     show_prompt = True
 
@@ -136,6 +138,7 @@ async def run_interactive(
 
         try:
             line = await process.stdin.readline()
+            touch()  # NEW
             show_prompt = True
 
             # End the session at EOF
@@ -175,10 +178,12 @@ async def run_interactive(
             process.stdout.write(sanitize_for_terminal(result.stderr))
 
         except asyncssh.TerminalSizeChanged:
+            touch()  # NEW
             show_prompt = False
             continue
 
         except asyncssh.BreakReceived:
+            touch()  # NEW
             show_prompt = True
             process.stdout.write("^C\n")
             continue
