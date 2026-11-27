@@ -378,3 +378,4 @@ SSH layer and shell complete and tested. Remaining before the early deployment (
 ### Status
 
 Caught up after being about a day behind: the entry point, Docker, and the VFS read side are done and tested. Remaining before the early deployment (Nov 22–24): VFS writes, core commands, the recorder, and egress restriction.
+
