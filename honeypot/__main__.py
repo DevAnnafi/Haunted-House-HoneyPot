@@ -39,9 +39,11 @@ async def serve(config: Config, auth: AuthPolicy, base_root: Node) -> None:
             port=config.ssh_port,
             host_key_path=config.host_key_path,
             # partial fills in base_root; asyncssh still calls it with just the process.
-            process_factory=partial(handle_process, base_root=base_root),
+            process_factory=partial(handle_process, base_root=base_root, recorder=recorder),
+            recorder=recorder,
             login_timeout=config.login_timeout,
         )
+
         log.info("HONEYPOT LISTENING host=%s port=%d", config.ssh_host, config.ssh_port)
         try:
             # On Windows, the selector loop only notices Ctrl+C when it wakes up,

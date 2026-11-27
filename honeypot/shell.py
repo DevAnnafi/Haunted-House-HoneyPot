@@ -1,11 +1,15 @@
 import copy
 import logging
 import unicodedata
+from typing import Any
+from uuid import UUID
 
 import asyncssh
 
-from honeypot.commands.engine import Context, execute, home_dir
+from honeypot.commands.engine import CommandResult, Context, execute, home_dir
+from honeypot.recorder import Recorder
 from honeypot.vfs import Node, VirtualFS
+from shared.events import EventType
 
 log = logging.getLogger(__name__)
 MAX_COMMAND_BYTES = 4096
@@ -51,24 +55,72 @@ def _display_cwd(cwd: str, home: str) -> str:
     return cwd
 
 
-async def run_exec(process: asyncssh.SSHServerProcess, ctx: Context) -> None:
+class _SessionRecording:
+    """Records one session's shell events; ends the session if recording fails."""
+
+    def __init__(
+        self,
+        process: asyncssh.SSHServerProcess,
+        recorder: Recorder,
+        session_id: UUID | None,
+    ) -> None:
+        self._process = process
+        self._recorder = recorder
+        self._session_id = session_id
+
+    def record(self, event_type: EventType, payload: dict[str, Any]) -> bool:
+        # Fail closed (R5.11): if the event can't be recorded, end the session.
+        if self._session_id is not None and self._recorder.record(
+            self._session_id, event_type, payload
+        ):
+            return True
+        self._process.exit(1)
+        conn = self._process.get_extra_info("connection")
+        if conn is not None:
+            conn.close()
+        return False
+
+    def output(self, result: CommandResult) -> bool:
+        # The raw output is the evidence; safe_text makes it safe to store.
+        return self.record(
+            EventType.OUTPUT,
+            {
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "exit_status": result.exit_status,
+            },
+        )
+
+
+async def run_exec(
+    process: asyncssh.SSHServerProcess, ctx: Context, rec: _SessionRecording
+) -> None:
     command = process.command
     client_ip = process.get_extra_info("peername")[0]
 
     if _is_too_long(command):
         byte_count = len(command.encode("utf-8", "surrogatepass"))
+        # Record the size only, never the oversized command itself.
+        if not rec.record(EventType.LIMIT_REJECTED, {"bytes": byte_count}):
+            return
         process.stderr.write("-bash: command too long\n")
         log.warning("BYTE LENGTH TOO LONG client_ip=%s byte_count=%d", client_ip, byte_count)
         process.exit(1)
         return
 
+    if not rec.record(EventType.COMMAND, {"line": command}):
+        return
     result = execute(ctx, command)
+    if not rec.output(result):
+        return
     process.stdout.write(sanitize_for_terminal(result.stdout))
     process.stderr.write(sanitize_for_terminal(result.stderr))
     process.exit(result.exit_status)
 
 
-async def run_interactive(process: asyncssh.SSHServerProcess, ctx: Context) -> None:
+async def run_interactive(
+    process: asyncssh.SSHServerProcess, ctx: Context, rec: _SessionRecording
+) -> None:
     prompt_char = "#" if ctx.username == "root" else "$"
     home = home_dir(ctx.username)
     client_ip = process.get_extra_info("peername")[0]
@@ -96,23 +148,31 @@ async def run_interactive(process: asyncssh.SSHServerProcess, ctx: Context) -> N
             if not cmd:
                 continue
 
-            if cmd == "exit":
-                process.stdout.write("logout\n")
-                break
-
             if _is_too_long(cmd):
-                process.stdout.write("-bash: command too long\n")
                 byte_count = len(cmd.encode("utf-8", "surrogatepass"))
+                if not rec.record(EventType.LIMIT_REJECTED, {"bytes": byte_count}):
+                    return
+                process.stdout.write("-bash: command too long\n")
                 log.warning(
                     "BYTE LENGTH TOO LONG client_ip=%s byte_count=%d",
                     client_ip,
                     byte_count,
                 )
-            else:
-                result = execute(ctx, cmd)
-                process.stdout.write(sanitize_for_terminal(result.stdout))
-                # With a terminal, stdout and stderr both go to the same screen.
-                process.stdout.write(sanitize_for_terminal(result.stderr))
+                continue
+
+            if not rec.record(EventType.COMMAND, {"line": cmd}):
+                return
+
+            if cmd == "exit":
+                process.stdout.write("logout\n")
+                break
+
+            result = execute(ctx, cmd)
+            if not rec.output(result):
+                return
+            process.stdout.write(sanitize_for_terminal(result.stdout))
+            # With a terminal, stdout and stderr both go to the same screen.
+            process.stdout.write(sanitize_for_terminal(result.stderr))
 
         except asyncssh.TerminalSizeChanged:
             show_prompt = False
@@ -126,11 +186,14 @@ async def run_interactive(process: asyncssh.SSHServerProcess, ctx: Context) -> N
     process.exit(0)
 
 
-async def handle_process(process: asyncssh.SSHServerProcess, base_root: Node) -> None:
+async def handle_process(
+    process: asyncssh.SSHServerProcess, base_root: Node, recorder: Recorder
+) -> None:
     # One context per connection: cd carries over between commands, but two
     # attackers never share a filesystem.
     ctx = _make_context(process, base_root)
+    rec = _SessionRecording(process, recorder, process.get_extra_info("session_id"))
     if process.command is None:
-        await run_interactive(process, ctx)
+        await run_interactive(process, ctx, rec)
     else:
-        await run_exec(process, ctx)
+        await run_exec(process, ctx, rec)

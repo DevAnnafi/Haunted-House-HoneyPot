@@ -19,7 +19,10 @@ from hypothesis import strategies as st
 
 from honeypot.auth import AuthPolicy
 from honeypot.limits import AdmissionController
+from honeypot.recorder import Recorder
 from honeypot.ssh_server import MAX_FAILED_ATTEMPTS, HoneypotServer, create_honeypot_server
+from shared.events import EndReason, EventRow, EventType
+from tests.recorder_helpers import collect_session, drain, events_of, session_close, session_row
 
 # Obviously fake test-only values.
 FAKE_SECRET_HEX = "deadbeef" * 8
@@ -56,8 +59,10 @@ async def running_server(
     tmp_path: Path,
     admission: AdmissionController | None = None,
     login_timeout: float = 15.0,
+    recorder: Recorder | None = None,
 ) -> AsyncIterator[tuple[int, AdmissionController]]:
     admission = admission if admission is not None else AdmissionController()
+    recorder = recorder if recorder is not None else Recorder()
     acceptor = await create_honeypot_server(
         make_policy(tmp_path),
         admission,
@@ -65,6 +70,7 @@ async def running_server(
         0,
         write_host_key(tmp_path),
         echo_process_factory,
+        recorder,
         login_timeout=login_timeout,
     )
     try:
@@ -194,6 +200,7 @@ async def test_r1_11_scp_is_refused(tmp_path):
         0,
         write_host_key(tmp_path),
         recording_factory,
+        Recorder(),
     )
     try:
         async with await connect(acceptor.get_port()) as conn:
@@ -222,6 +229,7 @@ async def test_r1_12_agent_forwarding_request_creates_no_agent_channel(tmp_path)
         0,
         write_host_key(tmp_path),
         recording_factory,
+        Recorder(),
     )
     try:
         async with await asyncssh.connect(
@@ -259,6 +267,7 @@ async def test_r1_12_x11_forwarding_request_is_refused(tmp_path):
         0,
         write_host_key(tmp_path),
         recording_factory,
+        Recorder(),
     )
     try:
         async with await connect(acceptor.get_port()) as conn:
@@ -350,6 +359,9 @@ class FakeConn:
     def close(self) -> None:
         self.close_calls += 1
 
+    def set_extra_info(self, **info) -> None:
+        pass
+
     def get_extra_info(self, name: str, default=None):
         if name == "peername":
             return (LOOPBACK, 12345)
@@ -361,8 +373,11 @@ def module_policy(tmp_path_factory) -> AuthPolicy:
     return make_policy(tmp_path_factory.mktemp("policy"))
 
 
-def make_server(policy: AuthPolicy) -> tuple[HoneypotServer, FakeConn]:
-    server = HoneypotServer(policy, AdmissionController())
+def make_server(
+    policy: AuthPolicy, recorder: Recorder | None = None
+) -> tuple[HoneypotServer, FakeConn]:
+    recorder = recorder if recorder is not None else Recorder()
+    server = HoneypotServer(policy, AdmissionController(), recorder)
     conn = FakeConn()
     server.connection_made(conn)
     assert conn.close_calls == 0
@@ -458,3 +473,156 @@ async def test_r8_8_setup_timeout_closes_unauthenticated_connection(tmp_path):
             assert elapsed < 5.0
         finally:
             writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Recording: what the server puts on the recorder's queue
+# ---------------------------------------------------------------------------
+
+
+def test_r5_connect_auth_attempt_and_session_row_use_fingerprint_never_password(module_policy):
+    wrong_password = "hunter2-attacker-guess"
+    recorder = Recorder()
+    server, _conn = make_server(module_policy, recorder)
+    assert server.validate_password("mallory", wrong_password) is False
+    assert server.validate_password(LISTED_USER, LISTED_PASS) is True
+    server.connection_lost(None)
+
+    items = drain(recorder)
+    fp = module_policy.fingerprint
+    row = session_row(items)
+    assert items[0] is row
+    assert row.username == LISTED_USER
+    assert row.auth_succeeded is True
+    assert row.client_ip == LOOPBACK
+    assert row.client_port == 12345
+    assert events_of(items) == [
+        (EventType.CONNECT, {}),
+        (
+            EventType.AUTH_ATTEMPT,
+            {"username": "mallory", "result": "failure", "fingerprint": fp(wrong_password)},
+        ),
+        (
+            EventType.AUTH_ATTEMPT,
+            {"username": LISTED_USER, "result": "success", "fingerprint": fp(LISTED_PASS)},
+        ),
+    ]
+    assert [i.seq for i in items if isinstance(i, EventRow)] == [0, 1, 2]
+    assert items[-1] is session_close(items)
+    assert session_close(items).end_reason is EndReason.DISCONNECT
+    for password in (wrong_password, LISTED_PASS):
+        assert password not in repr(items)
+
+
+def test_r8_7_five_failed_passwords_end_the_session_with_auth_failures(module_policy):
+    recorder = Recorder()
+    server, conn = make_server(module_policy, recorder)
+    for _ in range(MAX_FAILED_ATTEMPTS):
+        assert server.validate_password("attacker", "wrong") is False
+    assert conn.close_calls == 1
+    server.connection_lost(None)
+
+    items = drain(recorder)
+    row = session_row(items)
+    assert row.auth_succeeded is False
+    assert row.username is None
+    assert [event_type for event_type, _ in events_of(items)] == [
+        EventType.CONNECT,
+        *[EventType.AUTH_ATTEMPT] * MAX_FAILED_ATTEMPTS,
+    ]
+    assert session_close(items).end_reason is EndReason.AUTH_FAILURES
+
+
+def test_r8_7_four_failed_passwords_end_the_session_as_disconnect(module_policy):
+    recorder = Recorder()
+    server, _conn = make_server(module_policy, recorder)
+    for _ in range(MAX_FAILED_ATTEMPTS - 1):
+        server.validate_password("attacker", "wrong")
+    server.connection_lost(None)
+    assert session_close(drain(recorder)).end_reason is EndReason.DISCONNECT
+
+
+async def test_r5_real_connection_records_session_row_connect_and_auth_attempt(tmp_path):
+    recorder = Recorder()
+    async with running_server(tmp_path, recorder=recorder) as (port, _admission):
+        async with await connect(port) as conn:
+            await asyncio.wait_for(conn.run("whoami", check=False), CLIENT_TIMEOUT)
+        items = await collect_session(recorder)
+
+    fingerprint = make_policy(tmp_path).fingerprint(LISTED_PASS)
+    row = session_row(items)
+    assert items[0] is row
+    assert row.username == LISTED_USER
+    assert row.auth_succeeded is True
+    assert row.client_ip == LOOPBACK
+    assert row.client_version is not None
+    assert events_of(items) == [
+        (EventType.CONNECT, {}),
+        (
+            EventType.AUTH_ATTEMPT,
+            {"username": LISTED_USER, "result": "success", "fingerprint": fingerprint},
+        ),
+    ]
+    assert LISTED_PASS not in repr(items)
+    assert session_close(items).end_reason is EndReason.DISCONNECT
+
+
+async def test_r5_wrong_password_connection_records_failed_session_row(tmp_path):
+    recorder = Recorder()
+    async with running_server(tmp_path, recorder=recorder) as (port, _admission):
+        with pytest.raises(asyncssh.PermissionDenied):
+            await connect(port, LISTED_USER, "not-the-password")
+        items = await collect_session(recorder)
+
+    row = session_row(items)
+    assert row.auth_succeeded is False
+    assert row.username is None
+    assert [event_type for event_type, _ in events_of(items)] == [
+        EventType.CONNECT,
+        EventType.AUTH_ATTEMPT,
+    ]
+    assert "not-the-password" not in repr(items)
+
+
+async def test_r1_10_local_forward_denial_is_recorded(tmp_path):
+    recorder = Recorder()
+    async with running_server(tmp_path, recorder=recorder) as (port, _admission):
+        async with await connect(port) as conn:
+            with pytest.raises(asyncssh.ChannelOpenError):
+                await asyncio.wait_for(conn.open_connection(LOOPBACK, 9), CLIENT_TIMEOUT)
+        items = await collect_session(recorder)
+
+    assert [e for e in events_of(items) if e[0] is EventType.FORWARD_DENIED] == [
+        (EventType.FORWARD_DENIED, {"type": "local", "dest_host": LOOPBACK, "dest_port": 9})
+    ]
+
+
+async def test_r1_10_remote_forward_denial_is_recorded(tmp_path):
+    recorder = Recorder()
+    async with running_server(tmp_path, recorder=recorder) as (port, _admission):
+        async with await connect(port) as conn:
+            with pytest.raises(asyncssh.ChannelListenError):
+                await asyncio.wait_for(
+                    conn.forward_remote_port("0.0.0.0", 2222, LOOPBACK, 9), CLIENT_TIMEOUT
+                )
+        items = await collect_session(recorder)
+
+    assert [e for e in events_of(items) if e[0] is EventType.FORWARD_DENIED] == [
+        (
+            EventType.FORWARD_DENIED,
+            {"type": "remote", "listen_host": "0.0.0.0", "listen_port": 2222},
+        )
+    ]
+
+
+def test_r1_10_unix_forward_denials_are_recorded(module_policy):
+    recorder = Recorder()
+    server, _conn = make_server(module_policy, recorder)
+    assert server.unix_connection_requested("/tmp/a.sock") is False
+    assert server.unix_server_requested("/tmp/b.sock") is False
+    server.connection_lost(None)
+
+    assert [e for e in events_of(drain(recorder)) if e[0] is EventType.FORWARD_DENIED] == [
+        (EventType.FORWARD_DENIED, {"type": "unix-local", "dest_path": "/tmp/a.sock"}),
+        (EventType.FORWARD_DENIED, {"type": "unix-remote", "listen_path": "/tmp/b.sock"}),
+    ]

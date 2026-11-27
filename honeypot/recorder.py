@@ -58,6 +58,11 @@ class Recorder:
             started_at=utc_now_ms(),
         )
 
+    def set_client_version(self, session_id: UUID, client_version: str | None) -> None:
+        state = self._sessions.get(session_id)
+        if state is not None:
+            state.client_version = client_version
+
     def record(self, session_id: UUID, event_type: EventType, payload: dict[str, Any]) -> bool:
         state = self._sessions.get(session_id)
 
@@ -72,6 +77,7 @@ class Recorder:
             for key, value in payload.items()
         }
 
+        # tests/test_shell.py recorded_size() mirrors this rule; keep them in sync
         size = len(json.dumps(clean, ensure_ascii=False).encode("utf-8"))
 
         if state.recorded_bytes + size > self._session_cap_bytes:

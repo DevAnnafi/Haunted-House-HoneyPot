@@ -9,6 +9,7 @@ fake; no real .env, host key or config/credentials.toml is read.
 """
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -22,9 +23,12 @@ from honeypot import shell
 from honeypot.auth import AuthPolicy
 from honeypot.commands.engine import CommandResult, Context
 from honeypot.limits import AdmissionController
+from honeypot.recorder import Recorder
 from honeypot.shell import MAX_COMMAND_BYTES, handle_process
 from honeypot.ssh_server import create_honeypot_server
 from honeypot.vfs import load_template
+from shared.events import EndReason, EventType
+from tests.recorder_helpers import collect_session, events_of, session_close, session_row
 
 # Obviously fake test-only values.
 FAKE_SECRET_HEX = "deadbeef" * 8
@@ -48,7 +52,6 @@ SECRET_MARKER = "SECRET-COMMAND-TEXT"
 # The real fake-filesystem template. handle_process deep-copies it per session, so one
 # shared instance is safe across tests.
 BASE_ROOT = load_template(Path("config/fs_template.toml"))
-PROCESS_FACTORY = partial(handle_process, base_root=BASE_ROOT)
 
 
 def root_prompt(cwd_display: str) -> str:
@@ -69,14 +72,16 @@ def write_host_key(directory: Path) -> Path:
 
 
 @asynccontextmanager
-async def running_server(tmp_path: Path) -> AsyncIterator[int]:
+async def running_server(tmp_path: Path, recorder: Recorder | None = None) -> AsyncIterator[int]:
+    recorder = recorder if recorder is not None else Recorder()
     acceptor = await create_honeypot_server(
         make_policy(tmp_path),
         AdmissionController(),
         LOOPBACK,
         0,
         write_host_key(tmp_path),
-        PROCESS_FACTORY,
+        partial(handle_process, base_root=BASE_ROOT, recorder=recorder),
+        recorder,
     )
     try:
         yield acceptor.get_port()
@@ -649,3 +654,202 @@ async def test_r2_10_concurrent_sessions_do_not_share_cwd(tmp_path):
             finally:
                 proc_a.close()
                 proc_b.close()
+
+
+# ---------------------------------------------------------------------------
+# Recording (R5): events on the recorder's queue
+# ---------------------------------------------------------------------------
+
+PRE_SHELL_EVENT_TYPES = [EventType.CONNECT, EventType.AUTH_ATTEMPT]
+
+
+def shell_events(items):
+    """Events after connect and auth_attempt, as (type, payload) pairs."""
+    events = events_of(items)
+    assert [t for t, _ in events[:2]] == PRE_SHELL_EVENT_TYPES
+    return events[2:]
+
+
+async def test_r5_exec_records_command_and_output(tmp_path):
+    recorder = Recorder()
+    async with running_server(tmp_path, recorder) as port:
+        async with await connect(port) as conn:
+            result = await asyncio.wait_for(conn.run("echo hello", check=False), CLIENT_TIMEOUT)
+            assert result.stdout == "hello\n"
+        items = await collect_session(recorder)
+
+    assert session_row(items).auth_succeeded is True
+    assert shell_events(items) == [
+        (EventType.COMMAND, {"line": "echo hello"}),
+        (EventType.OUTPUT, {"stdout": "hello\n", "stderr": "", "exit_status": 0}),
+    ]
+    assert session_close(items).end_reason is EndReason.DISCONNECT
+
+
+async def test_r5_exec_records_stderr_and_nonzero_exit_status(tmp_path):
+    recorder = Recorder()
+    async with running_server(tmp_path, recorder) as port:
+        async with await connect(port) as conn:
+            result = await asyncio.wait_for(
+                conn.run("no-such-command", check=False), CLIENT_TIMEOUT
+            )
+            assert result.exit_status == 127
+        items = await collect_session(recorder)
+
+    assert shell_events(items) == [
+        (EventType.COMMAND, {"line": "no-such-command"}),
+        (
+            EventType.OUTPUT,
+            {
+                "stdout": "",
+                "stderr": "-bash: no-such-command: command not found\n",
+                "exit_status": 127,
+            },
+        ),
+    ]
+
+
+async def test_r5_interactive_records_commands_outputs_and_exit(tmp_path):
+    recorder = Recorder()
+    async with running_server(tmp_path, recorder) as port:
+        async with await connect(port) as conn:
+            process = await conn.create_process()
+            try:
+                assert await read_until(process, " ") == ROOT_PROMPT
+                process.stdin.write("echo hi\n")
+                assert await read_until(process, " ") == f"hi\n{ROOT_PROMPT}"
+                process.stdin.write("pwd\n")
+                assert await read_until(process, " ") == f"/root\n{ROOT_PROMPT}"
+                process.stdin.write("exit\n")
+                result = await finish(process)
+                assert result.exit_status == 0
+            finally:
+                process.close()
+        items = await collect_session(recorder)
+
+    # "exit" is recorded as a command but runs no engine code, so it has no output event.
+    assert shell_events(items) == [
+        (EventType.COMMAND, {"line": "echo hi"}),
+        (EventType.OUTPUT, {"stdout": "hi\n", "stderr": "", "exit_status": 0}),
+        (EventType.COMMAND, {"line": "pwd"}),
+        (EventType.OUTPUT, {"stdout": "/root\n", "stderr": "", "exit_status": 0}),
+        (EventType.COMMAND, {"line": "exit"}),
+    ]
+    assert session_close(items).end_reason is EndReason.DISCONNECT
+
+
+async def test_r5_interactive_records_raw_output_not_the_sanitized_text(tmp_path, execute_spy):
+    # The recorder keeps the evidence; only the terminal copy is sanitized.
+    recorder = Recorder()
+    async with running_server(tmp_path, recorder) as port:
+        async with await connect(port) as conn:
+            result = await asyncio.wait_for(
+                conn.run("echo \x1b[31mred", check=False), CLIENT_TIMEOUT
+            )
+            assert result.stdout == "ran:echo [31mred\n"
+        items = await collect_session(recorder)
+
+    assert shell_events(items) == [
+        (EventType.COMMAND, {"line": "echo \x1b[31mred"}),
+        (EventType.OUTPUT, {"stdout": "ran:echo \x1b[31mred\n", "stderr": "", "exit_status": 0}),
+    ]
+
+
+async def test_r5_exec_oversize_records_limit_rejected_with_only_the_byte_count(tmp_path):
+    recorder = Recorder()
+    command = padded_command(MAX_COMMAND_BYTES + 1)
+    async with running_server(tmp_path, recorder) as port:
+        async with await connect(port) as conn:
+            result = await asyncio.wait_for(conn.run(command, check=False), CLIENT_TIMEOUT)
+            assert result.stderr == TOO_LONG_MESSAGE
+        items = await collect_session(recorder)
+
+    assert shell_events(items) == [(EventType.LIMIT_REJECTED, {"bytes": 4097})]
+    assert SECRET_MARKER not in repr(items)
+
+
+async def test_r5_interactive_oversize_records_limit_rejected_with_only_the_byte_count(tmp_path):
+    recorder = Recorder()
+    command = padded_command(MAX_COMMAND_BYTES + 1)
+    async with running_server(tmp_path, recorder) as port:
+        async with await connect(port) as conn:
+            process = await conn.create_process()
+            try:
+                assert await read_until(process, " ") == ROOT_PROMPT
+                process.stdin.write(command + "\n")
+                assert await read_until(process, ROOT_PROMPT) == f"{TOO_LONG_MESSAGE}{ROOT_PROMPT}"
+                process.stdin.write("exit\n")
+                await finish(process)
+            finally:
+                process.close()
+        items = await collect_session(recorder)
+
+    assert shell_events(items) == [
+        (EventType.LIMIT_REJECTED, {"bytes": 4097}),
+        (EventType.COMMAND, {"line": "exit"}),
+    ]
+    assert SECRET_MARKER not in repr(items)
+
+
+def recorded_size(payload: dict) -> int:
+    """Bytes the recorder counts for a payload (mirrors Recorder.record's size rule)."""
+    return len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+
+
+def cap_that_admits_only_connect_and_auth(tmp_path: Path) -> int:
+    """A session_cap_bytes that fits connect and auth_attempt but not the first command."""
+    auth_payload = {
+        "username": LISTED_USER,
+        "result": "success",
+        "fingerprint": make_policy(tmp_path).fingerprint(LISTED_PASS),
+    }
+    cap = recorded_size({}) + recorded_size(auth_payload) + 1
+    assert recorded_size({"line": "echo hello"}) > 1
+    return cap
+
+
+async def read_all(stream: asyncssh.SSHReader) -> str:
+    """Everything the client received before the stream ended."""
+    try:
+        return await asyncio.wait_for(stream.read(), CLIENT_TIMEOUT)
+    except asyncssh.Error:
+        return ""
+
+
+async def test_r5_11_exec_fails_closed_when_the_recording_cap_is_hit(tmp_path, execute_spy):
+    recorder = Recorder(session_cap_bytes=cap_that_admits_only_connect_and_auth(tmp_path))
+    async with running_server(tmp_path, recorder) as port:
+        async with await connect(port) as conn:
+            process = await conn.create_process("echo hello")
+            try:
+                stdout = await read_all(process.stdout)
+                stderr = await read_all(process.stderr)
+            finally:
+                process.close()
+        items = await collect_session(recorder)
+
+    assert execute_spy.calls == []
+    assert stdout == ""
+    assert stderr == ""
+    assert [t for t, _ in events_of(items)] == PRE_SHELL_EVENT_TYPES
+    assert session_close(items).end_reason is EndReason.RECORDING_CAP
+
+
+async def test_r5_11_interactive_fails_closed_when_the_recording_cap_is_hit(tmp_path, execute_spy):
+    recorder = Recorder(session_cap_bytes=cap_that_admits_only_connect_and_auth(tmp_path))
+    async with running_server(tmp_path, recorder) as port:
+        async with await connect(port) as conn:
+            process = await conn.create_process()
+            try:
+                assert await read_until(process, " ") == ROOT_PROMPT
+                process.stdin.write("echo hello\n")
+                # Nothing after the first prompt: no command output, no second prompt.
+                rest = await read_all(process.stdout)
+            finally:
+                process.close()
+        items = await collect_session(recorder)
+
+    assert execute_spy.calls == []
+    assert rest == ""
+    assert [t for t, _ in events_of(items)] == PRE_SHELL_EVENT_TYPES
+    assert session_close(items).end_reason is EndReason.RECORDING_CAP
