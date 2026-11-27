@@ -93,6 +93,11 @@ services:
 networks:
   honeypot_net:
     driver: bridge
+    driver_opts:
+      # Fixed so the IPv6 firewall rule (scripts/egress-firewall.sh) can match the bridge
+      # interface before Docker has created the network. Keep in sync with
+      # HONEYPOT_BRIDGE_IFACE in that script. At most 15 characters.
+      com.docker.network.bridge.name: honeypot0
     ipam:
       config:
         # Fixed so the host firewall can match it. Keep in sync with HONEYPOT_NET_SUBNET

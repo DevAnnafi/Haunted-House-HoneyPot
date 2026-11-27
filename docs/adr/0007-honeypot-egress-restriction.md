@@ -55,6 +55,12 @@ The unit uses **`RequiredBy=docker.service`**: if the firewall script fails at b
 
 LLM egress will go through an **allowlisting proxy** (option 2) on its own network. The host rules stay in place, so the proxy becomes the only permitted route out, and direct connections remain blocked. That change will amend this ADR.
 
+### Amendment (2026-11-27): IPv6 and the fixed bridge name
+
+- **IPv6 is blocked too.** The same `HONEYPOT_EGRESS` structure is built with `ip6tables`, jumped to from `DOCKER-USER` and `INPUT`. The honeypot's networks are not IPv6-enabled, so in the default mode the IPv6 chain drops all traffic from the honeypot's bridge interface outright, with no exception for replies, because no IPv6 sessions should exist. If the network ever gains an IPv6 subnet, the rules match that subnet and allow only `ESTABLISHED,RELATED`, like IPv4.
+- **The honeypot's bridge has a fixed name, `honeypot0`** (`com.docker.network.bridge.name` in `docker-compose.yml`). The rules are applied before Docker starts, when Docker's generated `br-xxxx` name doesn't exist yet. A fixed name lets the rule target exactly this network. A wildcard such as `br-+` was rejected because it would also match `db_net` and any future Docker network.
+- **Container privileges are verified, not assumed.** The deploy checks use `docker inspect` on the running container to confirm it is not privileged, uses no host network, PID or IPC namespaces, has no container-runtime socket mounted, has the host key as its only bind mount (read-only), and has no IPv6 address. A further check confirms that the instance-metadata service (`169.254.169.254`) is unreachable from the container.
+
 ## Consequences
 
 ### Pros
@@ -99,3 +105,13 @@ LLM egress will go through an **allowlisting proxy** (option 2) on its own netwo
 - [ ] On the real VPS: from inside the honeypot container, connections to the host's own services fail.
 - [ ] On the real VPS: `journalctl` shows the unit ran before `docker.service`.
 - [ ] On the real VPS: if the unit is made to fail, Docker doesn't start.
+
+IPv6 and container hardening (added after the items above):
+
+- [ ] Re-run the Docker-in-Docker checks above with the IPv4 and IPv6 version of the script: `apply` three times leaves identical `iptables` and `ip6tables` rulesets, `remove` deletes both families' jumps and chains, and the rules survive a `dockerd` restart. (Before this, the script was only run against a fake `iptables`/`ip6tables`, which does not model real rule matching.)
+- [ ] On the real VPS: `ip6tables -S HONEYPOT_EGRESS` shows only `-j DROP`, and `ip6tables -S DOCKER-USER` and `ip6tables -S INPUT` each show `-i honeypot0 -j HONEYPOT_EGRESS` as the first rule.
+- [ ] On the real VPS: from inside the honeypot container, a connection to an IPv6 address (`[2606:4700:4700::1111]:443`) fails.
+- [ ] On the real VPS: with `HONEYPOT_NET_SUBNET6` set to a test IPv6 subnet, `apply` replaces the interface jumps with `-s <subnet6>` jumps and an `ESTABLISHED,RELATED` + `DROP` chain, and setting it back restores the interface rule.
+- [ ] On the real VPS: `ip6tables` removed or failing makes `apply` exit non-zero, so the unit fails and Docker doesn't start.
+- [ ] On the real VPS: from inside the honeypot container, connections to `169.254.169.254` (ports 80 and 443, the DigitalOcean metadata service) fail, while the same request from the host succeeds.
+- [ ] On the real VPS: the container privilege checks in `docs/deployment.md` all print `OK` on the running container: not privileged, no `network_mode: host`, `pid: host` or `ipc: host`, no Docker socket mount, the host key as the only bind mount (read-only), and IPv6 disabled on both networks.
